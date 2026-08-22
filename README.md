@@ -90,6 +90,25 @@ npm run dev        # http://localhost:8787
 
 ---
 
+## 更新する
+
+サーバに置いた cutlog を新しくするときは、リポジトリの `deploy.sh` を使います。
+gitから取ってきて、イメージを作り直し、入れ替えて、健康確認まで一度に行います。
+
+```bash
+cd /opt/cutlog
+./deploy.sh              # origin/main の最新へ
+./deploy.sh v0.2.0       # タグ・ブランチ・コミットを指定
+./deploy.sh --status     # いまの状態を見るだけ
+./deploy.sh --rollback   # 直前の版へ戻す
+```
+
+- 健康確認（`/api/healthz`）が通らなければ、**自動で直前の版へ戻します**。
+- `.env` は git の管理外なので、更新しても**サーバの設定はそのまま残ります**。
+- すでに最新なら、作り直さずに終わります。
+
+---
+
 ## 大きく使うとき
 
 - **Web と ffmpeg を分ける**: 同じイメージを2つ立て、Web 側は `RENDER_WORKER=false`、ワーカー側は `true`。
