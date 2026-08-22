@@ -2053,10 +2053,29 @@ async function openLogs() {
   showScreen('logs');
 }
 
+function visibleLogs() {
+  const q = $('#logsSearch').value.trim().toLowerCase();
+  if (!q) return state.logs;
+  return state.logs.filter((l) => `${l.name} ${l.ownerName || ''}`.toLowerCase().includes(q));
+}
+
+function paintLogsFilter() {
+  const q = $('#logsSearch').value.trim();
+  $('#logsFilterBar').hidden = !q;
+  $('#logsFilterText').textContent = q ? `タイトル「${q}」で絞りこみ中` : '';
+}
+
 function renderLogsList() {
   const list = $('#logsList');
   list.innerHTML = '';
-  for (const l of state.logs) {
+  paintLogsFilter();
+  const shown = visibleLogs();
+  if (!shown.length) {
+    list.innerHTML = `<div class="empty">${$('#logsSearch').value.trim()
+      ? '条件に合うログはありません。' : 'まだログがありません。右上の＋から作れます。'}</div>`;
+    return;
+  }
+  for (const l of shown) {
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'log-row';
@@ -2444,9 +2463,39 @@ $('#allFilterClear').addEventListener('click', () => $('#searchClear').click());
 $('#menuBtn').addEventListener('click', openLogs);
 $('#shareLinksBtn').addEventListener('click', openShareLinks);
 $('#closeShareLinks').addEventListener('click', () => $('#shareLinksDialog').close());
+$('#logsAddBtn').addEventListener('click', () => {
+  $('#newLogName').value = '';
+  $('#joinCode').value = '';
+  $('#logAddDialog').showModal();
+  $('#newLogName').focus();
+});
+$('#logsSearchBtn').addEventListener('click', () => {
+  $('#logSearchDialog').showModal();
+  $('#logsSearch').focus();
+});
+$('#logsSearchGo').addEventListener('click', () => {
+  closeModal($('#logSearchDialog'));
+  renderLogsList();
+});
+$('#logsSearchClear').addEventListener('click', () => {
+  $('#logsSearch').value = '';
+  closeModal($('#logSearchDialog'));
+  renderLogsList();
+});
+$('#logsSearch').addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter') { ev.preventDefault(); $('#logsSearchGo').click(); }
+});
+$('#logsFilterClear').addEventListener('click', () => $('#logsSearchClear').click());
+$('#newLogName').addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter') { ev.preventDefault(); $('#createLog').click(); }
+});
+$('#joinCode').addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter') { ev.preventDefault(); $('#joinLog').click(); }
+});
 $('#createLog').addEventListener('click', async () => {
   const name = $('#newLogName').value.trim();
   if (!name) return;
+  closeModal($('#logAddDialog'));
   const { log } = await api('/logs', { method: 'POST', body: JSON.stringify({ name }) });
   state.logId = log.id;
   $('#newLogName').value = '';
@@ -2458,6 +2507,7 @@ $('#createLog').addEventListener('click', async () => {
 $('#joinLog').addEventListener('click', async () => {
   const code = $('#joinCode').value.trim();
   if (!code) return;
+  closeModal($('#logAddDialog'));
   const { log } = await api('/logs/join', { method: 'POST', body: JSON.stringify({ code }) });
   state.logId = log.id;
   await loadLogs();

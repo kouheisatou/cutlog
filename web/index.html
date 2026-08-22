@@ -8,7 +8,7 @@
 <title>cutlog</title>
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="/styles.css?v=0.14.2" />
+<link rel="stylesheet" href="/styles.css?v=0.15.0" />
 </head>
 <body>
 <svg class="sprite" aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute">
@@ -48,19 +48,19 @@
 
 <!-- ログ一覧（最上位の画面。作成・参加・各ログの招待コードもここ） -->
 <div id="logsScreen" class="app" hidden>
-  <main class="screen-body top">
+  <header class="topbar">
+    <div class="spacer"></div>
+    <button id="logsSearchBtn" class="icon-btn" aria-label="ログを検索"><svg class="ic"><use href="#ic-search"/></svg></button>
+    <button id="logsAddBtn" class="icon-btn" aria-label="ログを追加"><svg class="ic"><use href="#ic-plus"/></svg></button>
+  </header>
+  <main class="screen-body">
+    <div id="logsFilterBar" class="filter-bar" hidden>
+      <span class="tc" id="logsFilterText"></span>
+      <button id="logsFilterClear" class="mini">解除</button>
+    </div>
     <nav aria-label="ログ一覧">
       <div id="logsList" class="logs-list"></div>
     </nav>
-    <h2 class="section-head"><span>ログを追加</span></h2>
-    <div class="panel-row">
-      <input id="newLogName" placeholder="新しいログの名前" />
-      <button id="createLog" class="btn">作成</button>
-    </div>
-    <div class="panel-row">
-      <input id="joinCode" placeholder="招待コード" />
-      <button id="joinLog" class="btn">参加</button>
-    </div>
   </main>
 </div>
 
@@ -542,6 +542,39 @@
   </div>
 </dialog>
 
+<!-- ログの追加（ログ一覧の右上から開く） -->
+<dialog id="logAddDialog" class="sheet">
+  <div class="panel">
+    <button type="button" class="panel-close icon-btn" data-close aria-label="閉じる"><svg class="ic"><use href="#ic-close"/></svg></button>
+    <h2>ログを追加</h2>
+    <h3>新しく作る</h3>
+    <div class="panel-row">
+      <input id="newLogName" placeholder="ログのタイトル" autocomplete="off" />
+      <button id="createLog" class="btn primary">作成</button>
+    </div>
+    <h3>招待コードで参加する</h3>
+    <div class="panel-row">
+      <input id="joinCode" placeholder="招待コード" autocomplete="off" />
+      <button id="joinLog" class="btn">参加</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- ログの検索（ログ一覧の右上から開く） -->
+<dialog id="logSearchDialog" class="sheet">
+  <div class="panel">
+    <button type="button" class="panel-close icon-btn" data-close aria-label="閉じる"><svg class="ic"><use href="#ic-close"/></svg></button>
+    <h2>ログを検索</h2>
+    <div class="panel-row">
+      <label>タイトル<input id="logsSearch" type="search" placeholder="ログのタイトルを入力してください" autocomplete="off" /></label>
+    </div>
+    <div class="panel-actions">
+      <button id="logsSearchClear" class="btn">絞り込みをリセット</button>
+      <button id="logsSearchGo" class="btn primary">検索</button>
+    </div>
+  </div>
+</dialog>
+
 <!-- 検索（カット一覧から開く） -->
 <dialog id="searchDialog" class="sheet">
   <div class="panel">
@@ -561,6 +594,6 @@
 </dialog>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-<script type="module" src="/app.js?v=0.14.2"></script>
+<script type="module" src="/app.js?v=0.15.0"></script>
 </body>
 </html>
