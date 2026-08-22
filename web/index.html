@@ -8,7 +8,7 @@
 <title>cutlog</title>
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="/styles.css?v=0.13.6" />
+<link rel="stylesheet" href="/styles.css?v=0.14.0" />
 </head>
 <body>
 <svg class="sprite" aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute">
@@ -52,7 +52,7 @@
     <nav aria-label="ログ一覧">
       <div id="logsList" class="logs-list"></div>
     </nav>
-    <h2 class="section-head"><span>ログを増やす</span></h2>
+    <h2 class="section-head"><span>ログを追加</span></h2>
     <div class="panel-row">
       <input id="newLogName" placeholder="新しいログの名前" />
       <button id="createLog" class="btn">作成</button>
@@ -109,7 +109,7 @@
     <div class="panel-row" id="logSetInviteRow">
       <span class="tc" id="logSetInvite"></span>
       <button id="logSetCopyInvite" class="mini"><svg class="ic sm"><use href="#ic-copy"/></svg>コピー</button>
-      <button id="logSetRotate" class="mini">作り直す</button>
+      <button id="logSetRotate" class="mini">再生成</button>
     </div>
 
     <h2 class="section-head"><span>参加者</span><span id="logSetMemberCount" class="muted"></span></h2>
@@ -122,7 +122,7 @@
 
     <h2 class="section-head"><span>ゴミ箱</span></h2>
     <div class="panel-row">
-      <button id="logSetTrash" class="btn"><svg class="ic sm"><use href="#ic-trash"/></svg>消したカットを見る</button>
+      <button id="logSetTrash" class="btn"><svg class="ic sm"><use href="#ic-trash"/></svg>削除したカットを表示</button>
     </div>
     <div id="logSetTrashList" class="trash-list"></div>
   </main>
@@ -146,7 +146,7 @@
           <video id="pvA" playsinline preload="auto"></video>
           <video id="pvB" playsinline preload="auto"></video>
           <img id="pvImg" alt="" hidden />
-          <div class="stage-empty" id="pvEmpty">この日に出せるクリップがありません</div>
+          <div class="stage-empty" id="pvEmpty">この日に表示できるクリップがありません</div>
           <button class="stage-tap" id="pvTap" aria-label="再生・一時停止"></button>
           <div class="stage-overlay" aria-hidden="true">
             <span class="ov ov-left" id="ovLog"></span>
@@ -200,7 +200,7 @@
     <aside id="allPane" class="list-pane">
       <div id="allFilterBar" class="filter-bar" hidden>
         <span class="tc" id="allFilterText"></span>
-        <button id="allFilterClear" class="mini">やめる</button>
+        <button id="allFilterClear" class="mini">解除</button>
       </div>
       <div id="allBody" class="list-body"></div>
     </aside>
@@ -286,8 +286,8 @@
     <div class="pick-head">
       <span class="tc" id="pickCount"></span>
       <div class="spacer"></div>
-      <button type="button" id="pickAll" class="mini">全部入れる</button>
-      <button type="button" id="pickNone" class="mini">全部外す</button>
+      <button type="button" id="pickAll" class="mini">すべて選択</button>
+      <button type="button" id="pickNone" class="mini">すべて解除</button>
     </div>
     <div id="exportList" class="pick-list"></div>
     <div class="panel-row" id="exportOptions">
@@ -317,7 +317,7 @@
       <div id="advBox" hidden>
       <h3>画面</h3>
       <div class="panel-row">
-        <label>大きさ<select id="stSize">
+        <label>サイズ<select id="stSize">
           <option value="landscape">横 1280×720</option>
           <option value="portrait">縦 720×1280</option>
           <option value="square">正方形 1080×1080</option>
@@ -327,7 +327,7 @@
         <label id="stHLabel" hidden>高さ<input id="stH" type="number" min="240" max="3840" step="2" /></label>
       </div>
       <div class="panel-row">
-        <label>収め方<select id="stFit">
+        <label>表示方法<select id="stFit">
           <option value="contain">全体を入れる（余白が付く）</option>
           <option value="cover">画面いっぱいに切り抜く</option>
         </select></label>
@@ -358,9 +358,9 @@
           <label>文字色<input id="stTimeColor" type="color" /></label>
         </div>
         <div class="panel-row">
-          <label class="check"><input type="checkbox" id="stTimeBox" /> 下地</label>
-          <label>下地の色<input id="stTimeBoxColor" type="color" /></label>
-          <label>下地の濃さ<input id="stTimeBoxOp" type="range" min="0" max="1" step="0.05" /></label>
+          <label class="check"><input type="checkbox" id="stTimeBox" /> 文字背景</label>
+          <label>文字背景の色<input id="stTimeBoxColor" type="color" /></label>
+          <label>文字背景の濃さ<input id="stTimeBoxOp" type="range" min="0" max="1" step="0.05" /></label>
         </div>
       </div>
       <h3>メモ</h3>
@@ -374,9 +374,9 @@
           <label>文字色<input id="stNoteColor" type="color" /></label>
         </div>
         <div class="panel-row">
-          <label class="check"><input type="checkbox" id="stNoteBox" /> 下地</label>
-          <label>下地の色<input id="stNoteBoxColor" type="color" /></label>
-          <label>下地の濃さ<input id="stNoteBoxOp" type="range" min="0" max="1" step="0.05" /></label>
+          <label class="check"><input type="checkbox" id="stNoteBox" /> 文字背景</label>
+          <label>文字背景の色<input id="stNoteBoxColor" type="color" /></label>
+          <label>文字背景の濃さ<input id="stNoteBoxOp" type="range" min="0" max="1" step="0.05" /></label>
         </div>
       </div>
       <h3>表紙</h3>
@@ -408,7 +408,7 @@
   <form method="dialog" class="panel">
     <button type="button" class="panel-close icon-btn" data-close aria-label="閉じる"><svg class="ic"><use href="#ic-close"/></svg></button>
     <h2>カットの移動</h2>
-    <p class="muted small" id="moveNote">動かしたカットは、元のログで作った共有リンクから外れます。</p>
+    <p class="muted small" id="moveNote">移動したカットは、移動元のログで作成した共有リンクから外れます。</p>
     <div id="moveList" class="move-list"></div>
     <div id="moveResult" class="move-result" hidden></div>
     <div class="panel-actions">
@@ -425,7 +425,7 @@
       <div class="map-host" id="mapHost">
         <div class="map-tiles" id="mapTiles"></div>
         <div class="map-pins" id="mapPins"></div>
-        <div class="map-empty" id="mapEmpty" hidden>場所の分かるカットがまだありません。</div>
+        <div class="map-empty" id="mapEmpty" hidden>位置情報のあるカットがまだありません。</div>
         <div class="map-credit" id="mapCredit"></div>
         <div class="map-count" id="mapCount"></div>
       </div>
@@ -446,11 +446,11 @@
   </main>
 </div>
 
-<!-- 設定（ログ一覧と並ぶ画面。既定の記録先・撮影の通知・アカウントだけ） -->
+<!-- 設定（ログ一覧と並ぶ画面。既定の記録先・撮影リマインダー・アカウントだけ） -->
 <div id="settingsScreen" class="app" hidden>
   <main class="screen-body top">
     <section>
-      <h2>撮影の通知</h2>
+      <h2>撮影リマインダー</h2>
       <div class="panel-row">
         <select id="remMode" aria-label="通知のしかた">
           <option value="off">通知しない</option>
@@ -477,9 +477,9 @@
       <div class="panel-row avatar-row">
         <span class="avatar lg" id="myAvatar"></span>
         <label class="btn" id="avatarPick">
-          顔の絵を選ぶ<input id="avatarInput" type="file" accept="image/*" hidden />
+          アイコン画像を設定<input id="avatarInput" type="file" accept="image/*" hidden />
         </label>
-        <button id="avatarClear" class="btn">外す</button>
+        <button id="avatarClear" class="btn">削除</button>
       </div>
       <div class="panel-row">
         <span id="whoami" class="muted"></span>
@@ -561,6 +561,6 @@
 </dialog>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-<script type="module" src="/app.js?v=0.13.6"></script>
+<script type="module" src="/app.js?v=0.14.0"></script>
 </body>
 </html>

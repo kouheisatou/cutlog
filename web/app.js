@@ -928,11 +928,11 @@ function renderLogMembers() {
     if (state.role === 'owner' && !isOwner) {
       const out = document.createElement('button');
       out.className = 'mini';
-      out.textContent = '外す';
+      out.textContent = '除外';
       out.addEventListener('click', async () => {
-        if (!confirm(`${m.display_name} をこのログから外しますか。`)) return;
+        if (!confirm(`${m.display_name} をこのログから除外しますか。`)) return;
         await api(`/logs/${state.logId}/members/${m.id}`, { method: 'DELETE' });
-        toast('外しました');
+        toast('除外しました');
         await loadLog();
         renderLogMembers();
         $('#logSetMemberCount').textContent = `${state.members.length}人`;
@@ -1088,7 +1088,7 @@ function renderDayList() {
     jump.className = 'clip-hit';
     jump.setAttribute('aria-label', `${t} から再生する`);
     jump.addEventListener('click', async () => {
-      if (c.hidden) { toast('非表示のクリップです。目のしるしを押すと戻せます'); return; }
+      if (c.hidden) { toast('非表示のクリップです。目のアイコンで表示に戻せます'); return; }
       const i = play.items.findIndex((it) => it.cut.id === c.id);
       if (i >= 0) await showClip(i, 0, true);
     });
@@ -1686,7 +1686,7 @@ function openPicker(kind, presetIds) {
   if (kind === 'render') {
     $('#advBox').hidden = true;
     $('#advToggle').setAttribute('aria-expanded', 'false');
-    $('#advToggle').textContent = '詳しい設定を出す';
+    $('#advToggle').textContent = '詳細設定を表示';
     const withNote = ids.map((cid) => state.cuts.find((c) => c.id === cid)).find((c) => c && c.note);
     state.pvNoteSample = withNote ? withNote.note.slice(0, 20) : 'ひとこと';
     fillStyleForm(state.renderStyle);
@@ -1796,7 +1796,7 @@ async function reloadDay() {
 
 function openMove(cutIds, fromLogId, { single = false } = {}) {
   const targets = state.logs.filter((l) => l.id !== fromLogId);
-  if (!targets.length) { toast('移す先のログがありません。ログ一覧で作るか、参加してください'); return; }
+  if (!targets.length) { toast('移動先のログがありません。ログ一覧で作成するか、参加してください'); return; }
   const dlg = $('#moveDialog');
   $('#moveNote').hidden = false;
   $('#moveList').hidden = false;
@@ -1817,7 +1817,7 @@ function openMove(cutIds, fromLogId, { single = false } = {}) {
     if (ev.submitter?.value !== 'ok') return;
     ev.preventDefault();
     const to = form.querySelector('input[name=moveTo]:checked')?.value;
-    if (!to) { toast('移す先のログを選んでください'); return; }
+    if (!to) { toast('移動先のログを選んでください'); return; }
     const toName = state.logs.find((l) => l.id === to)?.name || '';
     (async () => {
       try {
@@ -2197,9 +2197,9 @@ async function openShareLinks() {
     del.className = 'mini';
     del.textContent = '停止';
     del.addEventListener('click', async () => {
-      if (!confirm('この共有リンクを止めますか。リンクを知っている人は開けなくなります。')) return;
+      if (!confirm('この共有リンクを停止しますか。リンクを知っている人も開けなくなります。')) return;
       await api(`/shares/${s.id}`, { method: 'DELETE' });
-      toast('共有リンクを止めました');
+      toast('共有リンクを停止しました');
       openShareLinks();
     });
     row.append(copy, del);
@@ -2244,7 +2244,7 @@ $('#allAddInput').addEventListener('change', async (ev) => {
   if (!files.length) { toast('動画を選んでください'); return; }
   const destId = state.defaultLogId || state.privateLogId || state.logId;
   const destName = state.logs.find((l) => l.id === destId)?.name || '';
-  toast(`${files.length}本を${destName}へ取り込んでいます…`, 6000);
+  toast(`${files.length}本を「${destName}」へ取り込んでいます…`, 6000);
   let done = 0;
   for (const file of files) {
     const fd = new FormData();
@@ -2332,11 +2332,11 @@ $('#logSetCopyInvite').addEventListener('click', () => {
   toast('招待コードをコピーしました');
 });
 $('#logSetRotate').addEventListener('click', async () => {
-  if (!confirm('招待コードを作り直しますか。いまのコードでは入れなくなります。')) return;
+  if (!confirm('招待コードを再生成しますか。現在のコードでは参加できなくなります。')) return;
   const { inviteCode } = await api(`/logs/${state.logId}/invite/rotate`, { method: 'POST' });
   $('#logSetInvite').textContent = inviteCode;
   await loadLogs();
-  toast('作り直しました');
+  toast('再生成しました');
 });
 initStyleForm();
 $('#search').addEventListener('input', debounce(loadCuts, 350));
@@ -2382,7 +2382,7 @@ $('#advToggle').addEventListener('click', () => {
   const open = box.hidden;
   box.hidden = !open;
   $('#advToggle').setAttribute('aria-expanded', String(open));
-  $('#advToggle').textContent = open ? '詳しい設定を隠す' : '詳しい設定を出す';
+  $('#advToggle').textContent = open ? '詳細設定を隠す' : '詳細設定を表示';
 });
 $('#mapListBack').addEventListener('click', () => { state.mapPick = []; showScreen('map'); });
 $('#commentSend').addEventListener('click', async () => {
@@ -2406,14 +2406,14 @@ $('#avatarInput').addEventListener('change', async (ev) => {
     const { user } = await api('/me/avatar', { method: 'POST', body: fd });
     state.user = user;
     paintMyAvatar();
-    toast('顔の絵を変えました');
+    toast('アイコン画像を設定しました');
   } catch (err) { toast(err.message, 4000); }
 });
 $('#avatarClear').addEventListener('click', async () => {
   const { user } = await api('/me/avatar', { method: 'DELETE' });
   state.user = user;
   paintMyAvatar();
-  toast('顔の絵を外しました');
+  toast('アイコン画像を削除しました');
 });
 $('#allSearchBtn').addEventListener('click', () => {
   fillAuthorOptions();
