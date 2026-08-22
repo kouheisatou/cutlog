@@ -389,23 +389,58 @@ dialog.sheet::backdrop { background: rgba(16,16,18,.5); }
 .share-cut .dl { margin-top: var(--s1); }
 
 /* ── 撮影 ───────────────────────────────────────────── */
-.capture { position: relative; width: min(980px, 100%); height: min(88dvh, 100% * 0.5625); background: #000; overflow: hidden; }
-.capture video, .capture canvas { width: 100%; height: 100%; object-fit: cover; }
+/* ── 撮影 ─────────────────────────────────────────────
+   横（16:9）で撮るのが基本。
+   ★画面ごと回転させる作りはやめた（縦持ちのとき帯状に潰れて読めなくなる）。
+   縦持ちでは、撮れる範囲だけを 16:9 の枠で見せ、操作は正しい向きのまま置く。 */
+.capture {
+  position: relative; width: 100%; height: 100dvh; background: #000; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.cam-stage {
+  position: relative; flex: 1; min-height: 0;
+  display: grid; place-items: center; background: #000;
+}
+.cam-stage video, .cam-stage canvas {
+  width: 100%; height: 100%; object-fit: contain;   /* 撮れる範囲をそのまま見せる */
+  display: block; background: #000;
+}
+.cam-hint {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  color: #fff; background: rgba(0,0,0,.5); border-radius: 999px;
+  padding: 6px 14px; font-size: 11px; letter-spacing: .06em; white-space: nowrap;
+  pointer-events: none; max-width: 88%; overflow: hidden; text-overflow: ellipsis;
+}
+
 .capture-top {
-  position: absolute; top: var(--s3); left: var(--s3); right: var(--s3);
-  display: flex; align-items: center; gap: var(--s2);
+  position: absolute; top: 0; left: 0; right: 0; z-index: 2;
+  display: flex; align-items: center; gap: var(--s2); flex-wrap: nowrap;
+  padding: max(var(--s2), env(safe-area-inset-top)) var(--s3) var(--s2);
+  background: linear-gradient(to bottom, rgba(0,0,0,.55), transparent);
+}
+.capture-top .icon-btn { flex: none; }
+
+/* 操作は下にまとめる。指の届くところに、順番どおり並べる。 */
+.capture-controls {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; gap: var(--s2);
+  padding: var(--s3) var(--s3) max(var(--s3), env(safe-area-inset-bottom));
+  background: linear-gradient(to top, rgba(0,0,0,.6), transparent);
 }
 .capture-bottom {
-  position: absolute; bottom: var(--s4); left: 0; right: 0;
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  width: 100%; max-width: 520px;
 }
-.capture-bottom > :first-child { justify-self: start; padding-left: var(--s4); }
-.capture-bottom > :last-child { justify-self: end; padding-right: var(--s4); }
+.capture-bottom > :first-child { justify-self: start; }
+.capture-bottom > :last-child { justify-self: end; }
+
 .chip { color: #fff; padding: 6px 10px; font-size: 11px; letter-spacing: .14em; opacity: .8; text-shadow: 0 1px 4px rgba(0,0,0,.7); }
 .chip:hover { opacity: 1; }
 .chip.active { opacity: 1; text-decoration: underline; text-underline-offset: 5px; }
-#capTimer { margin: 0 auto; font-family: var(--mono); font-size: 12px; letter-spacing: .1em; }
-.mode-toggle { display: flex; gap: var(--s2); }
+.chip.file { display: grid; place-items: center; min-width: 44px; min-height: 44px; cursor: pointer; }
+.chip.ghost { opacity: .55; }
+#capTimer { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; }
+
 .shutter {
   position: relative; width: 78px; height: 78px; border-radius: 50%;
   background: none; padding: 0; border: 0; display: grid; place-items: center;
@@ -426,10 +461,43 @@ dialog.sheet::backdrop { background: rgba(16,16,18,.5); }
   stroke-dasharray: 283;            /* 2πr（r=45）ぶん */
   stroke-dashoffset: 283;           /* はじめは何も描かない */
 }
-.shutter.recording .ring-run {
-  animation: shutterRing var(--cut-seconds, 2s) linear forwards;
-}
+.shutter.recording .ring-run { animation: shutterRing var(--cut-seconds, 2s) linear forwards; }
 @keyframes shutterRing { to { stroke-dashoffset: 0; } }
+
+/* レンズ：短い名前の粒を横に並べる */
+.lens-list { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: 100%; }
+.lens {
+  min-width: 46px; min-height: 30px; padding: 0 10px;
+  display: grid; place-items: center; border-radius: 999px;
+  background: rgba(0,0,0,.5); color: #fff;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .04em; text-transform: none;
+  white-space: nowrap;
+}
+.lens.active { background: #fff; color: #111; }
+
+/* ズーム：横一列。倍率・つまみ・目印の順。 */
+.zoom-row { display: flex; align-items: center; gap: var(--s2); width: 100%; max-width: 520px; }
+.zoom-row input[type=range] { flex: 1; min-width: 0; accent-color: #fff; }
+.zoom-now {
+  min-width: 44px; text-align: center; color: #fff;
+  font-family: var(--mono); font-size: 11px; background: rgba(0,0,0,.5);
+  border-radius: 999px; padding: 4px 8px;
+}
+.zoom-stops { display: flex; gap: 4px; }
+.zoom-stop {
+  min-width: 34px; min-height: 28px; padding: 0 6px; border-radius: 999px;
+  display: grid; place-items: center; background: rgba(0,0,0,.5); color: #fff;
+  font-family: var(--mono); font-size: 10px; text-transform: none; letter-spacing: 0;
+}
+.zoom-stop.active { background: #fff; color: #111; }
+
+.cap-dest {
+  color: #fff; font-size: 11px; letter-spacing: .06em; opacity: .85;
+  text-decoration: underline; text-underline-offset: 4px; min-height: 32px;
+  min-width: 0; flex: 0 1 auto;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
 .review-bar {
   position: absolute; left: 0; right: 0; bottom: 0; padding: var(--s3);
   background: rgba(13,13,15,.9); display: flex; gap: var(--s3); align-items: center;
@@ -460,15 +528,6 @@ input[type=radio] { accent-color: var(--ink); width: 16px; height: 16px; flex: n
 .move-skip .when { font-family: var(--mono); font-size: 12px; color: var(--mute); white-space: nowrap; }
 
 /* ── 撮影画面: この撮影の行き先（押すと選び直せる） ──── */
-.cap-dest {
-  position: absolute; top: calc(var(--s3) + 36px); left: 50%; transform: translateX(-50%);
-  min-height: 44px; padding: 0 var(--s2);
-  display: inline-flex; align-items: center;
-  color: #fff; font-family: var(--mono); font-size: 10px;
-  letter-spacing: .14em; opacity: .85; text-shadow: 0 1px 4px rgba(0,0,0,.7);
-  text-decoration: underline; text-underline-offset: 4px;
-  text-decoration-color: rgba(255,255,255,.55); white-space: nowrap;
-}
 .cap-dest:hover { opacity: 1; text-decoration-color: #fff; }
 .dest-row { width: 100%; text-align: left; min-height: 44px; }
 .dest-row strong { font-weight: 600; }
@@ -636,7 +695,6 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
   .cut-row { gap: var(--s2); padding: var(--s2) var(--s4); }
   .toast { bottom: calc(80px + env(safe-area-inset-bottom)); }
   .panel { padding: var(--s4); }
-  .capture { height: 100dvh; width: 100%; }
 }
 
 /* 小さいスマホ：時刻の軸を畳み、写真を大きく見せる */
@@ -661,7 +719,6 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
 @media (max-height: 480px) and (orientation: landscape) {
   .topbar { padding: var(--s1) var(--s4); }
   .day-head { padding-top: var(--s3); }
-  .capture { height: 100dvh; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -770,28 +827,6 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
 #logSetSeconds { width: 72px; }
 #logSetName { min-width: 220px; }
 
-/* ── 撮影のズーム ───────────────────────────────────── */
-.zoom-wrap {
-  position: absolute; left: 0; right: 0; bottom: 128px;
-  display: flex; flex-direction: column; align-items: center; gap: var(--s1);
-  pointer-events: none;
-}
-.zoom-stops, .zoom-slider { display: flex; align-items: center; gap: var(--s1); pointer-events: auto; }
-.zoom-stop {
-  min-width: 44px; min-height: 32px; display: grid; place-items: center;
-  background: rgba(0,0,0,.45); color: #fff; border-radius: 999px;
-  font-family: var(--mono); font-size: 11px; letter-spacing: .04em;
-}
-.zoom-stop.active { background: #fff; color: #111; }
-.zoom-slider input[type=range] { width: min(58vw, 300px); accent-color: #fff; }
-#zoomNow {
-  background: rgba(0,0,0,.45); color: #fff; border-radius: 999px;
-  min-width: 46px; text-align: center; font-family: var(--mono); font-size: 11px;
-}
-.chip.ghost { opacity: .55; }
-/* 端末が寄れないときは映像を拡大するので、はみ出しを隠す */
-.capture video#preview { transform-origin: center center; }
-.capture { overflow: hidden; }
 
 /* ── 画面の切り替わり ───────────────────────────────── */
 /* 奥へ進むと右から、戻ると左から。タブの行き来はそっと入れ替える。 */
@@ -893,23 +928,6 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
 .ov-center { justify-self: center; text-align: center; }
 .ov-right { justify-self: end; font-family: var(--mono); letter-spacing: .06em; }
 
-/* 撮るのは横向きが前提。
-   画面がすでに横向きなら、そのまま広く使う。 */
-@media (orientation: landscape) {
-  .capture { width: 100%; height: 100dvh; }
-}
-
-/* 画面が縦向きのときは、撮影の画面ごと倒して横で見せる。
-   長い辺が下に来るので、そのまま構えれば横の絵が撮れる。 */
-@media (orientation: portrait) {
-  dialog#captureDialog { align-items: center; justify-content: center; }
-  .capture {
-    width: 100dvh; height: 100vw;           /* 縦横を入れ替える */
-    transform: rotate(90deg);
-    transform-origin: center center;
-    border-radius: 0;
-  }
-}
 
 /* カットの詳細：詳しい値は、右上の調整から開く */
 .detail-head { display: flex; align-items: flex-start; gap: var(--s2); }
@@ -984,8 +1002,10 @@ dialog.sheet.in .panel { transform: none; }
 }
 
 /* 撮影はシートではなく、画面いっぱいのまま */
-dialog#captureDialog { align-items: center; }
-dialog#captureDialog .capture { border-radius: 0; }
+/* 撮影は画面いっぱい。シートのようにせり上がらせない。 */
+dialog.sheet.cam { align-items: stretch; justify-content: center; }
+dialog.sheet.cam .capture { border-radius: 0; transform: none; }
+dialog.sheet.cam .panel { border-radius: 0; }
 
 /* 詳細のシートは、広い画面では少しゆとりを持たせる */
 .wide-panel { width: min(720px, 100%); }
@@ -993,16 +1013,3 @@ dialog#captureDialog .capture { border-radius: 0; }
   .panel { border-radius: 18px; margin-bottom: var(--s5); }
   dialog.sheet { align-items: center; }
 }
-
-/* 使えるレンズの選び分け */
-.lens-wrap {
-  position: absolute; left: 0; right: 0; bottom: 176px;
-  display: flex; justify-content: center; pointer-events: none;
-}
-.lens-list { display: flex; gap: var(--s1); pointer-events: auto; flex-wrap: wrap; justify-content: center; padding: 0 var(--s3); }
-.chip.lens {
-  background: rgba(0,0,0,.45); border-radius: 999px; min-height: 30px;
-  display: grid; place-items: center; font-size: 10px; letter-spacing: .04em;
-  text-transform: none; max-width: 40vw; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-}
-.chip.lens.active { background: #fff; color: #111; opacity: 1; }

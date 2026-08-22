@@ -10,7 +10,7 @@
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
 <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
 <link rel="stylesheet" href="/vendor/leaflet/MarkerCluster.css" />
-<link rel="stylesheet" href="/styles.css?v=0.18.4" />
+<link rel="stylesheet" href="/styles.css?v=0.19.2" />
 </head>
 <body>
 <svg class="sprite" aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute">
@@ -235,40 +235,47 @@
 </div>
 
 <!-- 撮影 -->
-<dialog id="captureDialog" class="sheet">
+<dialog id="captureDialog" class="sheet cam">
   <div class="capture">
-    <video id="preview" playsinline muted autoplay></video>
-    <canvas id="snapCanvas" hidden></canvas>
-    <video id="playback" playsinline controls hidden></video>
+    <!-- 撮るのは横（16:9）。縦持ちのときは、その枠を letterbox で見せる。 -->
+    <div class="cam-stage">
+      <video id="preview" playsinline muted autoplay></video>
+      <canvas id="snapCanvas" hidden></canvas>
+      <video id="playback" playsinline controls hidden></video>
+      <div class="cam-hint" id="camHint">横向きにすると画面いっぱいで撮れます</div>
+    </div>
+
     <div class="capture-top">
       <button id="closeCapture" class="icon-btn light" aria-label="閉じる"><svg class="ic"><use href="#ic-close"/></svg></button>
-      <div class="chip" id="capTimer">3秒</div>
-      <button id="flipCam" class="icon-btn light" aria-label="カメラを切り替える"><svg class="ic"><use href="#ic-flip"/></svg></button>
+      <button type="button" class="cap-dest" id="capDest"></button>
+      <div class="spacer"></div>
+      <div class="chip" id="capTimer">2秒</div>
+      <button id="flipCam" class="icon-btn light" aria-label="前と後ろを切り替える"><svg class="ic"><use href="#ic-flip"/></svg></button>
     </div>
-    <button type="button" class="cap-dest" id="capDest"></button>
-    <div class="lens-wrap" id="lensWrap" hidden>
-      <div class="lens-list" id="lensList"></div>
-    </div>
-    <div class="zoom-wrap" id="zoomWrap" hidden>
-      <div class="zoom-stops" id="zoomStops"></div>
-      <div class="zoom-slider">
+
+    <div class="capture-controls">
+      <div class="lens-list" id="lensList" hidden></div>
+      <div class="zoom-row" id="zoomWrap" hidden>
+        <span class="zoom-now" id="zoomNow">1×</span>
         <input id="zoomRange" type="range" aria-label="ズーム" min="1" max="4" step="0.1" value="1" />
-        <span class="chip" id="zoomNow">1×</span>
+        <div class="zoom-stops" id="zoomStops"></div>
+      </div>
+      <div class="capture-bottom">
+        <label class="chip file" aria-label="端末の動画から選ぶ">
+          <svg class="ic sm"><use href="#ic-plus"/></svg>
+          <input id="fileInput" type="file" accept="video/*" hidden />
+        </label>
+        <button id="shootBtn" class="shutter" aria-label="撮る">
+          <svg class="ring" viewBox="0 0 100 100" aria-hidden="true">
+            <circle class="ring-track" cx="50" cy="50" r="45" />
+            <circle class="ring-run" cx="50" cy="50" r="45" />
+          </svg>
+          <span class="dot"></span>
+        </button>
+        <span class="chip ghost">動画</span>
       </div>
     </div>
-    <div class="capture-bottom">
-      <label class="chip file">
-        ファイルから選択<input id="fileInput" type="file" accept="video/*" hidden />
-      </label>
-      <button id="shootBtn" class="shutter" aria-label="撮る">
-        <svg class="ring" viewBox="0 0 100 100" aria-hidden="true">
-          <circle class="ring-track" cx="50" cy="50" r="45" />
-          <circle class="ring-run" cx="50" cy="50" r="45" />
-        </svg>
-        <span class="dot"></span>
-      </button>
-      <span class="chip ghost">動画</span>
-    </div>
+
     <div id="reviewBar" class="review-bar" hidden>
       <button id="retakeBtn" class="btn">撮り直し</button>
       <input id="noteInput" placeholder="ひとこと（任意）" />
@@ -606,6 +613,6 @@
 <!-- 地図は Leaflet に任せる。同梱してあるので外へは取りに行かない。 -->
 <script src="/vendor/leaflet/leaflet.js"></script>
 <script src="/vendor/leaflet/leaflet.markercluster.js"></script>
-<script type="module" src="/app.js?v=0.18.4"></script>
+<script type="module" src="/app.js?v=0.19.2"></script>
 </body>
 </html>

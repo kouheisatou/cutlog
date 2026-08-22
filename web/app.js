@@ -22,6 +22,7 @@ const state = {
   allAuthors: [],       // 検索でえらべる、上げた人の顔ぶれ
   cameras: [],          // この端末で使えるレンズ
   cameraId: null,       // いま使っているレンズ
+  lensChosen: false,    // いちばん良いレンズへ乗り換え済みか
   mapPick: [],          // マップで押した場所に重なっていたカット
   commentCut: null,     // コメントを開いているクリップ
   detailCut: null,      // モーダルで開いているカット
@@ -1341,9 +1342,15 @@ function askPlace() {
   );
 }
 
+function paintCamHint() {
+  const portrait = window.matchMedia?.('(orientation: portrait)').matches;
+  $('#camHint').hidden = !portrait;
+}
+
 async function openCapture() {
   const dlg = $('#captureDialog');
   dlg.showModal();
+  paintCamHint();
   askPlace();
   $('#capTimer').textContent = `${state.log?.cut_seconds || 2}秒`;
   state.captureLogId = state.logId;
@@ -1361,31 +1368,61 @@ async function listCameras() {
   return state.cameras;
 }
 
-function cameraLabel(dev, i) {
-  const raw = (dev.label || '').trim();
-  if (!raw) return `カメラ${i + 1}`;
-  // 「FaceTime HD Camera (05ac:8514)」のような後ろの識別子は落とす
-  return raw.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '').slice(0, 18);
+// 端末が並べてくる名前は、そのままでは長すぎて読めない
+// （iPhoneは「背面デュアル広角カメラ」など、組み合わせの分まで出してくる）。
+// 短い呼び名に直し、同じ意味のものは1つにまとめる。
+function lensName(label) {
+  const t = String(label || '');
+  if (/前面|front|facetime/i.test(t)) return '前面';
+  // 組み合わせのカメラは、端末が自動で選び分けてくれる。いちばん素直な選択肢。
+  if (/トリプル|デュアル|triple|dual/i.test(t)) return '自動';
+  if (/超広角|ultra/i.test(t)) return '0.5×';
+  if (/望遠|tele/i.test(t)) return '望遠';
+  if (/広角|wide|back|背面/i.test(t)) return '1×';
+  return '';
+}
+
+// 並べる順。使う順に置く。
+const LENS_ORDER = ['自動', '0.5×', '1×', '望遠', '前面'];
+
+function pickLenses() {
+  const seen = new Map();
+  state.cameras.forEach((d, i) => {
+    const name = lensName(d.label) || (state.cameras.length > 1 ? `カメラ${i + 1}` : '');
+    if (!name || seen.has(name)) return;
+    seen.set(name, d);
+  });
+  const known = LENS_ORDER.filter((n) => seen.has(n)).map((n) => ({ name: n, dev: seen.get(n) }));
+  const rest = [...seen.entries()].filter(([n]) => !LENS_ORDER.includes(n)).map(([n, dev]) => ({ name: n, dev }));
+  return [...known, ...rest];
 }
 
 function renderCameraPicker() {
   const box = $('#lensList');
   box.innerHTML = '';
-  const cams = state.cameras;
+  const lenses = pickLenses();
   // 1つしか無いなら選ばせる意味がない
-  $('#lensWrap').hidden = cams.length < 2;
-  if (cams.length < 2) return;
-  cams.forEach((d, i) => {
+  box.hidden = lenses.length < 2;
+  if (lenses.length < 2) return;
+  for (const { name, dev } of lenses) {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = `chip lens${d.deviceId === state.cameraId ? ' active' : ''}`;
-    b.textContent = cameraLabel(d, i);
+    b.className = `lens${dev.deviceId === state.cameraId ? ' active' : ''}`;
+    b.textContent = name;
     b.addEventListener('click', async () => {
-      state.cameraId = d.deviceId;
+      state.cameraId = dev.deviceId;
       await startStream();
     });
     box.appendChild(b);
-  });
+  }
+}
+
+// はじめは、端末が自動で選び分けてくれる背面のカメラを使う（いちばん写りがよい）。
+function preferredCameraId() {
+  const lenses = pickLenses();
+  return lenses.find((l) => l.name === '自動')?.dev.deviceId
+    || lenses.find((l) => l.name === '1×')?.dev.deviceId
+    || null;
 }
 
 // 画づくりの注文。端末が出せる中でいちばん良いものを頼む。
@@ -1424,6 +1461,16 @@ async function startStream() {
     const track = stream.getVideoTracks()[0];
     state.cameraId = track?.getSettings?.().deviceId || state.cameraId;
     await listCameras();
+    // 名前が読めるようになった今、いちばん良いレンズへ乗り換える（初回だけ）
+    if (!state.lensChosen) {
+      state.lensChosen = true;
+      const best = preferredCameraId();
+      if (best && best !== state.cameraId) {
+        state.cameraId = best;
+        await startStream();
+        return;
+      }
+    }
     renderCameraPicker();
     $('#preview').srcObject = stream;
     $('#preview').hidden = false;
@@ -1507,7 +1554,8 @@ function renderZoomStops() {
   // よく使う倍率をすぐ押せるようにする（端末が出せる範囲に収まるものだけ）
   const box = $('#zoomStops');
   box.innerHTML = '';
-  const wants = zoom.native ? [zoom.min, zoom.min * 2, zoom.min * 3, zoom.max] : [1, 2, 3, 4];
+  // よく使うところだけ。増やすと押しにくくなる。
+  const wants = zoom.native ? [zoom.min, zoom.min * 2, zoom.max] : [1, 2, 4];
   const seen = new Set();
   for (const w of wants) {
     const v = Math.min(zoom.max, Math.max(zoom.min, w));
@@ -1516,7 +1564,7 @@ function renderZoomStops() {
     seen.add(key);
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'chip zoom-stop';
+    b.className = 'zoom-stop';
     b.dataset.zoom = String(v);
     b.textContent = `${zoomLabel(v)}×`;
     b.addEventListener('click', () => applyZoom(v));
@@ -2379,15 +2427,15 @@ $('#capDest').addEventListener('click', openDestChooser);
 $('#destCancel').addEventListener('click', () => $('#destDialog').close());
 $('#closeCapture').addEventListener('click', closeCapture);
 $('#flipCam').addEventListener('click', async () => {
-  const cams = state.cameras;
-  if (cams.length > 1) {
-    // 実際にあるレンズを順に回す
-    const i = cams.findIndex((d) => d.deviceId === state.cameraId);
-    state.cameraId = cams[(i + 1) % cams.length].deviceId;
-  } else {
-    state.cameraId = null;
-    facing = facing === 'environment' ? 'user' : 'environment';
-  }
+  // 前と後ろを入れ替える（同じ側の中での選び分けは、下の粒で行う）
+  const lenses = pickLenses();
+  const now = lenses.find((l) => l.dev.deviceId === state.cameraId);
+  const wantFront = now?.name !== '前面';
+  const next = wantFront
+    ? lenses.find((l) => l.name === '前面')
+    : (lenses.find((l) => l.name === '自動') || lenses.find((l) => l.name === '1×'));
+  if (next) state.cameraId = next.dev.deviceId;
+  else { state.cameraId = null; facing = facing === 'environment' ? 'user' : 'environment'; }
   await startStream();
 });
 $('#shootBtn').addEventListener('click', shoot);
@@ -2396,6 +2444,8 @@ $('#retakeBtn').addEventListener('click', async () => {
 });
 $('#saveCutBtn').addEventListener('click', saveCut);
 $('#zoomRange').addEventListener('input', (e) => applyZoom(e.target.value));
+window.addEventListener('orientationchange', () => setTimeout(paintCamHint, 200));
+window.matchMedia?.('(orientation: portrait)').addEventListener?.('change', paintCamHint);
 // 二本指でつまむと寄る・引く
 let pinch0 = 0; let pinchZoom0 = 1;
 $('#preview').addEventListener('touchstart', (ev) => {
