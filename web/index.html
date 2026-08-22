@@ -2,13 +2,15 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
 <meta name="theme-color" content="#0d0d0f" media="(prefers-color-scheme: dark)" />
 <title>cutlog</title>
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="/styles.css?v=0.15.0" />
+<link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
+<link rel="stylesheet" href="/vendor/leaflet/MarkerCluster.css" />
+<link rel="stylesheet" href="/styles.css?v=0.18.4" />
 </head>
 <body>
 <svg class="sprite" aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute">
@@ -244,6 +246,9 @@
       <button id="flipCam" class="icon-btn light" aria-label="カメラを切り替える"><svg class="ic"><use href="#ic-flip"/></svg></button>
     </div>
     <button type="button" class="cap-dest" id="capDest"></button>
+    <div class="lens-wrap" id="lensWrap" hidden>
+      <div class="lens-list" id="lensList"></div>
+    </div>
     <div class="zoom-wrap" id="zoomWrap" hidden>
       <div class="zoom-stops" id="zoomStops"></div>
       <div class="zoom-slider">
@@ -255,7 +260,13 @@
       <label class="chip file">
         ファイルから選択<input id="fileInput" type="file" accept="video/*" hidden />
       </label>
-      <button id="shootBtn" class="shutter" aria-label="撮る"><span class="dot"></span></button>
+      <button id="shootBtn" class="shutter" aria-label="撮る">
+        <svg class="ring" viewBox="0 0 100 100" aria-hidden="true">
+          <circle class="ring-track" cx="50" cy="50" r="45" />
+          <circle class="ring-run" cx="50" cy="50" r="45" />
+        </svg>
+        <span class="dot"></span>
+      </button>
       <span class="chip ghost">動画</span>
     </div>
     <div id="reviewBar" class="review-bar" hidden>
@@ -423,10 +434,8 @@
   <main class="body full">
     <aside class="list-pane">
       <div class="map-host" id="mapHost">
-        <div class="map-tiles" id="mapTiles"></div>
-        <div class="map-pins" id="mapPins"></div>
+        <div class="map-canvas" id="mapCanvas"></div>
         <div class="map-empty" id="mapEmpty" hidden>位置情報のあるカットがまだありません。</div>
-        <div class="map-credit" id="mapCredit"></div>
         <div class="map-count" id="mapCount"></div>
       </div>
     </aside>
@@ -594,6 +603,9 @@
 </dialog>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-<script type="module" src="/app.js?v=0.15.0"></script>
+<!-- 地図は Leaflet に任せる。同梱してあるので外へは取りに行かない。 -->
+<script src="/vendor/leaflet/leaflet.js"></script>
+<script src="/vendor/leaflet/leaflet.markercluster.js"></script>
+<script type="module" src="/app.js?v=0.18.4"></script>
 </body>
 </html>

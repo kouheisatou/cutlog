@@ -59,7 +59,10 @@ button, .tab-item, .seg, .chip, .mini, .btn, .log-row, .clip-row, .cal-day, .pho
 }
 
 /* 外側は動かさない。中の一覧や本文だけが流れる（二重に動くのを防ぐ） */
-html, body { height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none; }
+html, body {
+  height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none;
+  touch-action: pan-x pan-y;   /* 二本指の広げ縮めで画面が拡大しないようにする */
+}
 body {
   background: var(--paper); color: var(--ink);
   scrollbar-color: var(--mute) transparent;
@@ -88,7 +91,7 @@ button { cursor: pointer; }
 .cut-row .tc, .cal-day .d, .pick-row .when, .detail h2, .log-item .code { text-transform: none; }
 
 /* ── 骨格 ───────────────────────────────────────────── */
-.app { display: flex; flex-direction: column; height: 100dvh; }
+.app { display: flex; flex-direction: column; height: 100dvh; overflow-x: clip; max-width: 100%; }
 
 .topbar {
   display: flex; align-items: center; gap: var(--s3);
@@ -323,7 +326,7 @@ button svg, a svg { pointer-events: none; }
    撮影だけは全面を使うので、この形から外している。 */
 dialog.sheet {
   border: 0; padding: 0; background: transparent;
-  width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh;
+  width: 100%; max-width: 100%; height: 100dvh; max-height: 100dvh;
   margin: 0; top: 0; left: 0;
   display: flex; align-items: flex-end; justify-content: center;
 }
@@ -333,7 +336,7 @@ dialog.sheet::backdrop { background: rgba(16,16,18,.5); }
 .panel {
   position: relative;
   background: var(--paper); color: var(--ink);
-  width: min(640px, 100vw);
+  width: min(640px, 100%);
   max-height: 88dvh; overflow: auto; padding: var(--s4) var(--s4) var(--s5);
   border-radius: 18px 18px 0 0;
   padding-bottom: max(var(--s5), env(safe-area-inset-bottom));
@@ -386,7 +389,7 @@ dialog.sheet::backdrop { background: rgba(16,16,18,.5); }
 .share-cut .dl { margin-top: var(--s1); }
 
 /* ── 撮影 ───────────────────────────────────────────── */
-.capture { position: relative; width: min(980px, 100vw); height: min(88dvh, 100vw * 0.5625); background: #000; overflow: hidden; }
+.capture { position: relative; width: min(980px, 100%); height: min(88dvh, 100% * 0.5625); background: #000; overflow: hidden; }
 .capture video, .capture canvas { width: 100%; height: 100%; object-fit: cover; }
 .capture-top {
   position: absolute; top: var(--s3); left: var(--s3); right: var(--s3);
@@ -404,15 +407,29 @@ dialog.sheet::backdrop { background: rgba(16,16,18,.5); }
 #capTimer { margin: 0 auto; font-family: var(--mono); font-size: 12px; letter-spacing: .1em; }
 .mode-toggle { display: flex; gap: var(--s2); }
 .shutter {
-  width: 74px; height: 74px; border-radius: 50%; background: none; padding: 0;
-  border: 3px solid rgba(255,255,255,.9); display: grid; place-items: center;
+  position: relative; width: 78px; height: 78px; border-radius: 50%;
+  background: none; padding: 0; border: 0; display: grid; place-items: center;
 }
 .shutter .dot {
-  display: block; width: 56px; height: 56px; border-radius: 50%; background: #e5484d;
+  display: block; width: 58px; height: 58px; border-radius: 50%; background: #e5484d;
   transition: width .16s ease, height .16s ease, border-radius .16s ease;
 }
-.shutter.recording .dot { width: 28px; height: 28px; border-radius: 6px; }
+.shutter.recording .dot { width: 26px; height: 26px; border-radius: 6px; }
 .shutter:active .dot { opacity: .8; }
+
+/* 撮っているあいだ、外側の輪が時計回りに一周する。ちょうど1カットぶんの長さ。 */
+.shutter .ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.shutter .ring circle { fill: none; stroke-width: 6; }
+.shutter .ring-track { stroke: rgba(255, 255, 255, .32); }
+.shutter .ring-run {
+  stroke: #fff; stroke-linecap: round;
+  stroke-dasharray: 283;            /* 2πr（r=45）ぶん */
+  stroke-dashoffset: 283;           /* はじめは何も描かない */
+}
+.shutter.recording .ring-run {
+  animation: shutterRing var(--cut-seconds, 2s) linear forwards;
+}
+@keyframes shutterRing { to { stroke-dashoffset: 0; } }
 .review-bar {
   position: absolute; left: 0; right: 0; bottom: 0; padding: var(--s3);
   background: rgba(13,13,15,.9); display: flex; gap: var(--s3); align-items: center;
@@ -556,7 +573,7 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
 
 /* 下のタブバー：カメラ・ログ・全カット */
 .tabbar {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 1000;
   display: grid; grid-template-columns: repeat(3, 1fr);
   background: var(--paper); border-top: 1px solid var(--hair);
   padding-bottom: env(safe-area-inset-bottom);
@@ -619,7 +636,7 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
   .cut-row { gap: var(--s2); padding: var(--s2) var(--s4); }
   .toast { bottom: calc(80px + env(safe-area-inset-bottom)); }
   .panel { padding: var(--s4); }
-  .capture { height: 100dvh; width: 100vw; }
+  .capture { height: 100dvh; width: 100%; }
 }
 
 /* 小さいスマホ：時刻の軸を畳み、写真を大きく見せる */
@@ -779,11 +796,12 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
 /* ── 画面の切り替わり ───────────────────────────────── */
 /* 奥へ進むと右から、戻ると左から。タブの行き来はそっと入れ替える。 */
 @media (prefers-reduced-motion: no-preference) {
+  /* ★横へずらさない。ずらすと、その間だけ画面より広くなって横に動いてしまう。 */
   .app.enter-fwd { animation: scrFwd .22s cubic-bezier(.22,.61,.36,1) both; }
   .app.enter-back { animation: scrBack .22s cubic-bezier(.22,.61,.36,1) both; }
   .app.enter-fade { animation: scrFade .18s ease both; }
-  @keyframes scrFwd { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
-  @keyframes scrBack { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }
+  @keyframes scrFwd { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  @keyframes scrBack { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: none; } }
   @keyframes scrFade { from { opacity: 0; } to { opacity: 1; } }
 }
 
@@ -798,17 +816,27 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
 .cal-month-head .muted { margin-left: auto; }
 
 /* ── マップ ─────────────────────────────────────────── */
-.map-host { position: relative; flex: 1; overflow: hidden; background: var(--paper-2); min-height: 0; }
-.map-tiles, .map-pins { position: absolute; inset: 0; }
-.map-tiles { pointer-events: none; }
-.map-tiles .tile { position: absolute; width: 256px; height: 256px; display: block; }
-.map-pins { pointer-events: none; }
+/* 地図そのものは Leaflet が描く。ここでは器と、ピンの見た目だけを決める。 */
+.map-host {
+  position: relative; flex: 1; overflow: hidden; background: var(--paper-2); min-height: 0;
+  z-index: 0; isolation: isolate;   /* 地図の重なり順を、この中に閉じこめる */
+}
+.map-canvas { position: absolute; inset: 0; }
+.leaflet-container { width: 100%; height: 100%; background: var(--paper-2); font: inherit; }
+.leaflet-container a { color: var(--ink-soft); }
+/* Leaflet が既定で付ける白い箱と枠を消す（中の丸だけを見せる） */
+.pin-wrap, .leaflet-div-icon { background: none; border: 0; }
+.pin-wrap { display: grid; place-items: center; }
 .map-pin {
-  position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px;
+  position: relative; display: block; box-sizing: border-box;
+  width: 44px; height: 44px; aspect-ratio: 1; flex: none;
   border-radius: 50%; background: var(--paper);
   box-shadow: 0 0 0 2px var(--paper), 0 2px 6px rgba(0,0,0,.28);
-  pointer-events: auto; padding: 0;
+  cursor: pointer; padding: 0;
 }
+/* ★Leaflet の `.leaflet-container .leaflet-marker-pane img { width: auto }` の方が
+   細かく効くので、こちらも同じ深さで書いて上書きする（でないと絵が楕円になる）。 */
+.leaflet-container .leaflet-marker-pane .map-pin img,
 .map-pin img {
   width: 100%; height: 100%; object-fit: cover; display: block;
   border-radius: 50%;   /* 丸く切るのは絵だけ。数の印は外にはみ出す */
@@ -816,24 +844,20 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
 /* まとまったピン。中に入っている数を右上に出す。 */
 .map-pin.many { box-shadow: 0 0 0 2px var(--paper), 3px 3px 0 0 var(--paper), 3px 3px 0 2px var(--hair), 0 2px 6px rgba(0,0,0,.28); }
 .map-pin .n {
-  position: absolute; top: -6px; right: -6px; min-width: 20px; height: 20px;
+  position: absolute; top: -2px; right: -2px; min-width: 20px; height: 20px;
   border-radius: 999px; background: var(--sel); color: var(--sel-ink);
   font-family: var(--mono); font-size: 10px; line-height: 20px; text-align: center;
   padding: 0 5px; box-shadow: 0 0 0 2px var(--paper);
 }
-.map-host { cursor: grab; touch-action: none; }
-.map-host.grabbing { cursor: grabbing; }
-.map-tiles .tile { user-select: none; -webkit-user-drag: none; }
+/* 地図の上では、指の動きを Leaflet に渡す */
+.map-host { touch-action: none; }
 .map-empty {
   position: absolute; inset: 0; display: grid; place-items: center;
   color: var(--mute); font-size: 13px; letter-spacing: .06em; padding: var(--s4); text-align: center;
 }
-.map-credit {
-  position: absolute; right: 4px; bottom: 4px;
-  font-size: 10px; color: var(--ink-soft); background: rgba(255,255,255,.7);
-  padding: 1px 5px; border-radius: 3px; pointer-events: none;
-}
-#mapZoomIn, #mapZoomOut { font-size: 18px; line-height: 1; }
+/* Leaflet の出典表示と操作ボタンを、この画面の見た目になじませる */
+.leaflet-control-attribution { font-size: 10px; }
+.leaflet-control-zoom a { color: var(--ink); }
 
 /* タブが5つになったので、1つあたりを詰める */
 .tabbar { grid-template-columns: repeat(5, 1fr); }
@@ -869,9 +893,22 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
 .ov-center { justify-self: center; text-align: center; }
 .ov-right { justify-self: end; font-family: var(--mono); letter-spacing: .06em; }
 
-/* 横向きの画面では、撮影の画面をそのまま広く使う */
+/* 撮るのは横向きが前提。
+   画面がすでに横向きなら、そのまま広く使う。 */
 @media (orientation: landscape) {
-  .capture { width: 100vw; height: 100dvh; }
+  .capture { width: 100%; height: 100dvh; }
+}
+
+/* 画面が縦向きのときは、撮影の画面ごと倒して横で見せる。
+   長い辺が下に来るので、そのまま構えれば横の絵が撮れる。 */
+@media (orientation: portrait) {
+  dialog#captureDialog { align-items: center; justify-content: center; }
+  .capture {
+    width: 100dvh; height: 100vw;           /* 縦横を入れ替える */
+    transform: rotate(90deg);
+    transform-origin: center center;
+    border-radius: 0;
+  }
 }
 
 /* カットの詳細：詳しい値は、右上の調整から開く */
@@ -924,7 +961,7 @@ label#avatarPick { cursor: pointer; }
 .wide-panel { width: min(720px, 96vw); }
 
 /* マップは、下のタブ以外を全部使う（上に白い帯を作らない） */
-.body.full { padding: 0; }
+.body.full { padding: 0 0 calc(57px + env(safe-area-inset-bottom)); }
 #mapScreen .list-pane { flex: 1; min-height: 0; }
 #mapScreen .map-host { flex: 1; min-height: 0; }
 
@@ -951,8 +988,21 @@ dialog#captureDialog { align-items: center; }
 dialog#captureDialog .capture { border-radius: 0; }
 
 /* 詳細のシートは、広い画面では少しゆとりを持たせる */
-.wide-panel { width: min(720px, 100vw); }
+.wide-panel { width: min(720px, 100%); }
 @media (min-width: 900px) {
   .panel { border-radius: 18px; margin-bottom: var(--s5); }
   dialog.sheet { align-items: center; }
 }
+
+/* 使えるレンズの選び分け */
+.lens-wrap {
+  position: absolute; left: 0; right: 0; bottom: 176px;
+  display: flex; justify-content: center; pointer-events: none;
+}
+.lens-list { display: flex; gap: var(--s1); pointer-events: auto; flex-wrap: wrap; justify-content: center; padding: 0 var(--s3); }
+.chip.lens {
+  background: rgba(0,0,0,.45); border-radius: 999px; min-height: 30px;
+  display: grid; place-items: center; font-size: 10px; letter-spacing: .04em;
+  text-transform: none; max-width: 40vw; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.chip.lens.active { background: #fff; color: #111; opacity: 1; }

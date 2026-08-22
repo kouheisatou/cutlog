@@ -729,6 +729,52 @@ const EXT_MEDIA_TYPES = {
   mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', ogv: 'video/ogg',
 };
 
+// ★動画は「途中から」読めないと再生できない。
+// Safari は範囲取り（Range）に応えないサーバの <video> を再生しない。
+// プロキシを挟んだときも同じで、頭出しや早送りにも要る。
+// ここで Range を受け取り、求められた分だけ 206 で返す。
+export function parseRange(header, size) {
+  const m = /^bytes=(\d*)-(\d*)$/.exec(String(header || '').trim());
+  if (!m || !size) return null;
+  const [, rawStart, rawEnd] = m;
+  let start;
+  let end;
+  if (rawStart === '') {
+    // 「末尾から N バイト」の形
+    const n = Number(rawEnd);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    start = Math.max(0, size - n);
+    end = size - 1;
+  } else {
+    start = Number(rawStart);
+    end = rawEnd === '' ? size - 1 : Number(rawEnd);
+  }
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  if (start < 0 || start >= size || end < start) return null;
+  return { start, end: Math.min(end, size - 1) };
+}
+
+async function sendMaybeRanged(req, res, key) {
+  const size = await storage.size(key);
+  res.setHeader('Accept-Ranges', 'bytes');
+  const range = parseRange(req.headers.range, size);
+  if (req.headers.range && !range && size) {
+    // 読めない範囲を指定されたときは、その旨を返す（黙って全部返さない）
+    res.setHeader('Content-Range', `bytes */${size}`);
+    return res.status(416).end();
+  }
+  if (range) {
+    res.status(206);
+    res.setHeader('Content-Range', `bytes ${range.start}-${range.end}/${size}`);
+    res.setHeader('Content-Length', String(range.end - range.start + 1));
+    const part = await storage.stream(key, range);
+    return part.pipe(res);
+  }
+  if (size) res.setHeader('Content-Length', String(size));
+  const body = await storage.stream(key);
+  return body.pipe(res);
+}
+
 // 保存するときに型をそろえる。一覧に無い型は、拡張子から決め直す。
 export function sanitizeMediaType(declared, storageKey) {
   const bare = String(declared || '').split(';')[0].trim().toLowerCase();
@@ -763,8 +809,7 @@ api.get('/media/:cutId', asyncRoute(async (req, res) => {
   if (req.query.download || type === 'application/octet-stream') {
     res.setHeader('Content-Disposition', `attachment; filename="${key}"`);
   }
-  const body = await storage.stream(key);
-  return body.pipe(res);
+  return sendMaybeRanged(req, res, key);
 }));
 
 // ── アカウントの顔 ──────────────────────────────────────

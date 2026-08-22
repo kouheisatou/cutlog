@@ -20,6 +20,8 @@ const state = {
   // 全カット（ログをまたいだ一覧）
   allCuts: [],
   allAuthors: [],       // 検索でえらべる、上げた人の顔ぶれ
+  cameras: [],          // この端末で使えるレンズ
+  cameraId: null,       // いま使っているレンズ
   mapPick: [],          // マップで押した場所に重なっていたカット
   commentCut: null,     // コメントを開いているクリップ
   detailCut: null,      // モーダルで開いているカット
@@ -181,7 +183,7 @@ const swipe = { x: 0, y: 0, t: 0, live: false };
 
 function swipeStartOk(target) {
   if (document.querySelector('dialog[open]')) return false;
-  return !target.closest('.scrub, .stage, input[type=range], video, .detail-pane, .pick-list, .map-host');
+  return !target.closest('.scrub, .stage, input[type=range], video, .pick-list, .map-host, .leaflet-container');
 }
 
 document.addEventListener('touchstart', (ev) => {
@@ -650,163 +652,6 @@ $('#cutDialog').addEventListener('close', () => {
   renderCrumbs();
 });
 
-// ── マップ ──────────────────────────────────────────────
-// 撮った場所を地図の上に出す。地図の絵（タイル）は決まった住所から <img> で取るだけなので、
-// 外の道具を読み込まなくても動く。タイルの出どころはサーバの設定で変えられる。
-const map = { z: 13, cx: 0, cy: 0, cuts: [], tileUrl: '', credit: '', ready: false };
-const TILE = 256;
-
-const lon2x = (lon, z) => ((lon + 180) / 360) * Math.pow(2, z);
-const lat2y = (lat, z) => {
-  const r = (lat * Math.PI) / 180;
-  return ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * Math.pow(2, z);
-};
-
-async function openMap() {
-  showScreen('map');
-  if (!map.cuts.length) await loadMapCuts();
-  drawMap();
-}
-
-async function loadMapCuts() {
-  const { cuts } = await api('/cuts?limit=500');
-  map.cuts = cuts.filter((c) => c.lat != null && c.lon != null);
-  $('#mapCount').textContent = `${map.cuts.length}件`;
-  $('#mapEmpty').hidden = map.cuts.length > 0;
-  map.tileUrl = state.config?.mapTileUrl || '';
-  map.credit = state.config?.mapCredit || '';
-  $('#mapCredit').textContent = map.credit;
-  if (map.cuts.length && !map.ready) {
-    // はじめは、撮った場所が全部入るところへ合わせる
-    const lats = map.cuts.map((c) => c.lat);
-    const lons = map.cuts.map((c) => c.lon);
-    const midLat = (Math.min(...lats) + Math.max(...lats)) / 2;
-    const midLon = (Math.min(...lons) + Math.max(...lons)) / 2;
-    const span = Math.max(Math.max(...lats) - Math.min(...lats), Math.max(...lons) - Math.min(...lons));
-    map.z = span > 0 ? Math.max(2, Math.min(16, Math.floor(Math.log2(360 / span)) - 1)) : 14;
-    map.cx = lon2x(midLon, map.z);
-    map.cy = lat2y(midLat, map.z);
-    map.ready = true;
-  }
-}
-
-// ピンは、近いものをまとめて1つにする（写真のアプリの地図と同じ考え方）。
-// 縮めるとまとまり、広げると分かれる。まとまりを押すと、そこへ寄る。
-const CLUSTER_PX = 68;
-
-function clusterPins(pts, w, h) {
-  const cells = new Map();
-  for (const p of pts) {
-    if (p.px < -60 || p.py < -60 || p.px > w + 60 || p.py > h + 60) continue;
-    const key = `${Math.floor(p.px / CLUSTER_PX)},${Math.floor(p.py / CLUSTER_PX)}`;
-    if (!cells.has(key)) cells.set(key, []);
-    cells.get(key).push(p);
-  }
-  return [...cells.values()].map((group) => {
-    // まとまりの位置は、中に入っているものの平均にする（格子の目が見えないように）
-    const px = group.reduce((a, g) => a + g.px, 0) / group.length;
-    const py = group.reduce((a, g) => a + g.py, 0) / group.length;
-    // 見本は、いちばん新しいカットのものを使う
-    const head = group.reduce((a, g) => (a.cut.takenAt > g.cut.takenAt ? a : g));
-    return { px, py, group, head };
-  });
-}
-
-function drawMap() {
-  const host = $('#mapHost');
-  const w = host.clientWidth || 640;
-  const h = host.clientHeight || 480;
-  const tiles = $('#mapTiles');
-  const pins = $('#mapPins');
-  tiles.innerHTML = '';
-  pins.innerHTML = '';
-  if (!map.cuts.length) return;
-
-  // 画面の真ん中がどのタイルの、どの位置に当たるかを出す
-  const left = map.cx * TILE - w / 2;
-  const top = map.cy * TILE - h / 2;
-  const n = Math.pow(2, map.z);
-
-  if (map.tileUrl) {
-    const x0 = Math.floor(left / TILE);
-    const y0 = Math.floor(top / TILE);
-    const x1 = Math.floor((left + w) / TILE);
-    const y1 = Math.floor((top + h) / TILE);
-    for (let x = x0; x <= x1; x += 1) {
-      for (let y = y0; y <= y1; y += 1) {
-        if (y < 0 || y >= n) continue;
-        const img = document.createElement('img');
-        img.className = 'tile';
-        img.alt = '';
-        img.src = map.tileUrl
-          .replace('{z}', map.z).replace('{x}', ((x % n) + n) % n).replace('{y}', y);
-        img.style.left = `${x * TILE - left}px`;
-        img.style.top = `${y * TILE - top}px`;
-        tiles.appendChild(img);
-      }
-    }
-  }
-
-  const pts = map.cuts.map((c) => ({
-    cut: c,
-    px: lon2x(c.lon, map.z) * TILE - left,
-    py: lat2y(c.lat, map.z) * TILE - top,
-  }));
-
-  for (const cl of clusterPins(pts, w, h)) {
-    const one = cl.group.length === 1;
-    const pin = document.createElement('button');
-    pin.type = 'button';
-    pin.className = `map-pin${one ? '' : ' many'}`;
-    pin.style.left = `${cl.px}px`;
-    pin.style.top = `${cl.py}px`;
-    const c = cl.head.cut;
-    pin.setAttribute('aria-label', one
-      ? `${c.localDate} ${fmtTime(c.takenAt, c.tzOffset)} のカット`
-      : `このあたりの${cl.group.length}件`);
-    pin.innerHTML = (c.thumbUrl ? `<img src="${c.thumbUrl}" alt="" />` : '<span></span>')
-      + (one ? '' : `<span class="n">${cl.group.length}</span>`);
-    pin.addEventListener('click', () => openCutsFromMap(cl.group.map((g) => g.cut)));
-    pins.appendChild(pin);
-  }
-}
-
-// 指や矢印で地図を動かす
-function wireMapDrag() {
-  const host = $('#mapHost');
-  let from = null;
-  host.addEventListener('pointerdown', (ev) => {
-    if (ev.target.closest('.map-pin')) return;
-    from = { x: ev.clientX, y: ev.clientY, cx: map.cx, cy: map.cy };
-    host.classList.add('grabbing');
-    try { host.setPointerCapture(ev.pointerId); } catch { /* 掴めない指もある */ }
-  });
-  host.addEventListener('pointermove', (ev) => {
-    if (!from) return;
-    map.cx = from.cx - (ev.clientX - from.x) / TILE;
-    map.cy = from.cy - (ev.clientY - from.y) / TILE;
-    drawMap();
-  });
-  const done = () => { from = null; host.classList.remove('grabbing'); };
-  host.addEventListener('pointerup', done);
-  host.addEventListener('pointercancel', done);
-  // ホイールでも寄る・引く
-  host.addEventListener('wheel', (ev) => {
-    ev.preventDefault();
-    mapZoom(ev.deltaY < 0 ? 1 : -1);
-  }, { passive: false });
-}
-
-function mapZoom(d) {
-  const z = Math.max(2, Math.min(18, map.z + d));
-  if (z === map.z) return;
-  const k = Math.pow(2, z - map.z);
-  map.cx *= k;
-  map.cy *= k;
-  map.z = z;
-  drawMap();
-}
-
 // 地図で押した所に重なっていたカットを、マップの1つ下に並べる。
 // カット一覧のタブへは移らない（マップの中で潜っていく）。
 function openCutsFromMap(cuts) {
@@ -833,69 +678,97 @@ function renderMapList() {
   body.appendChild(wrap);
 }
 
+// ── マップ ──────────────────────────────────────────────
+// 地図そのものは Leaflet に任せる（同梱。外へは取りに行かない）。
+// 近いピンは markercluster がまとめる。まとまりを押すと、
+// そこに重なっているカットの一覧（マップの1つ下）へ進む。
+const map = { lm: null, cluster: null, cuts: [], fitted: false };
 
-
-// ── コメント ────────────────────────────────────────────
-// その日の並びから、クリップごとに開いて読み書きする。
-async function openComments(cut) {
-  state.commentCut = cut;
-  $('#commentTitle').textContent = `${fmtTime(cut.takenAt, cut.tzOffset)} のコメント`;
-  $('#commentBox').value = '';
-  $('#commentList').innerHTML = '<span class="muted small">読み込んでいます…</span>';
-  if (!$('#commentDialog').open) $('#commentDialog').showModal();
-  await paintComments();
+async function openMap() {
+  showScreen('map');
+  await loadMapCuts();
+  ensureMap();
+  drawMap();
+  // 画面に出てから作られることがあるので、大きさを測り直させる
+  setTimeout(() => map.lm?.invalidateSize(), 60);
 }
 
-async function paintComments() {
-  const cut = state.commentCut;
-  if (!cut) return;
-  const { comments } = await api(`/cuts/${cut.id}`);
-  const box = $('#commentList');
-  box.innerHTML = comments.length ? '' : '<span class="muted small">まだコメントはありません。</span>';
-  for (const c of comments) {
-    const row = document.createElement('div');
-    row.className = 'comment';
-    row.innerHTML = `${avatarHtml(c.avatarUrl, c.author)}
-      <div class="c-body"><strong>${escapeHtml(c.author)}</strong><span>${escapeHtml(c.body)}</span></div>`;
-    if (c.userId === state.user?.id) {
-      const del = document.createElement('button');
-      del.className = 'mini';
-      del.textContent = '消す';
-      del.addEventListener('click', async () => {
-        await api(`/comments/${c.id}`, { method: 'DELETE' });
-        await paintComments();
-        await refreshCommentCounts();
-      });
-      row.appendChild(del);
-    }
-    box.appendChild(row);
+async function loadMapCuts() {
+  const { cuts } = await api('/cuts?limit=500');
+  map.cuts = cuts.filter((c) => c.lat != null && c.lon != null);
+  $('#mapCount').textContent = `${map.cuts.length}件`;
+  $('#mapEmpty').hidden = map.cuts.length > 0;
+}
+
+function ensureMap() {
+  if (map.lm || typeof L === 'undefined') return;
+  map.lm = L.map('mapCanvas', {
+    zoomControl: true,
+    attributionControl: true,
+    // 端末の指の動きに任せる（自前で作っていた頃のぎこちなさを持ち込まない）
+    tap: true,
+    worldCopyJump: true,
+  }).setView([35.68, 139.77], 9);
+
+  const url = state.config?.mapTileUrl;
+  if (url) {
+    L.tileLayer(url, {
+      maxZoom: 19,
+      attribution: state.config?.mapCredit || '',
+    }).addTo(map.lm);
   }
-  // 数が変わっていれば、並びのしるしにも反映する
-  const target = state.dayCuts.find((x) => x.id === cut.id);
-  if (target) target.commentCount = comments.length;
-  renderDayList();
+
+  map.cluster = L.markerClusterGroup({
+    maxClusterRadius: 60,
+    showCoverageOnHover: false,
+    // まとまりを押したときは寄るのではなく、中身の一覧へ進む
+    zoomToBoundsOnClick: false,
+    spiderfyOnMaxZoom: false,
+    iconCreateFunction: (cl) => {
+      const kids = cl.getAllChildMarkers();
+      const head = kids.reduce((a, b) => (a.options.cut.takenAt > b.options.cut.takenAt ? a : b));
+      const thumb = head.options.cut.thumbUrl;
+      return L.divIcon({
+        className: 'pin-wrap',
+        html: `<span class="map-pin many">
+            ${thumb ? `<img src="${thumb}" alt="" />` : '<span></span>'}
+            <span class="n">${kids.length}</span>
+          </span>`,
+        iconSize: [46, 46],
+        iconAnchor: [23, 23],
+      });
+    },
+  });
+  map.cluster.on('clusterclick', (ev) => {
+    openCutsFromMap(ev.layer.getAllChildMarkers().map((m) => m.options.cut));
+  });
+  map.cluster.on('click', (ev) => {
+    // 束ねられていない1件を押したとき（markercluster は click を中継する）
+    const cut = ev.layer?.options?.cut;
+    if (cut) openCutsFromMap([cut]);
+  });
+  map.lm.addLayer(map.cluster);
 }
 
-async function refreshCommentCounts() {
-  renderDayList();
-}
-
-// ── アカウントの顔 ──────────────────────────────────────
-// 絵を置いていない人は、名前の頭文字で出す。
-function avatarHtml(url, name, cls = '') {
-  const initial = escapeHtml(String(name || '?').trim().slice(0, 1).toUpperCase());
-  return url
-    ? `<span class="avatar ${cls}"><img src="${url}" alt="" /></span>`
-    : `<span class="avatar ${cls}">${initial}</span>`;
-}
-
-function paintMyAvatar() {
-  const u = state.user;
-  if (!u) return;
-  $('#myAvatar').innerHTML = u.avatarUrl
-    ? `<img src="${u.avatarUrl}?t=${Date.now()}" alt="" />`
-    : escapeHtml(String(u.displayName || u.username || '?').trim().slice(0, 1).toUpperCase());
-  $('#avatarClear').hidden = !u.avatarUrl;
+function drawMap() {
+  if (!map.lm || !map.cluster) return;
+  map.cluster.clearLayers();
+  const markers = map.cuts.map((c) => L.marker([c.lat, c.lon], {
+    cut: c,
+    icon: L.divIcon({
+      className: 'pin-wrap',
+      html: `<span class="map-pin">${c.thumbUrl ? `<img src="${c.thumbUrl}" alt="" />` : '<span></span>'}</span>`,
+      iconSize: [44, 44],
+      iconAnchor: [22, 22],
+    }),
+    title: `${c.localDate} ${fmtTime(c.takenAt, c.tzOffset)}`,
+  }).on('click', () => openCutsFromMap([c])));
+  map.cluster.addLayers(markers);
+  // はじめの一度だけ、撮った場所が全部入るところへ合わせる
+  if (!map.fitted && markers.length) {
+    map.lm.fitBounds(map.cluster.getBounds(), { padding: [40, 40], maxZoom: 16 });
+    map.fitted = true;
+  }
 }
 
 // ── このログの設定 ──────────────────────────────────────
@@ -1478,21 +1351,118 @@ async function openCapture() {
   await startStream();
 }
 
+// この端末に本当にあるレンズを調べる。
+// ★名前（label）は、一度カメラを許してもらうまで空で返る決まりなので、
+//   先に一度つないでから調べ直す。
+async function listCameras() {
+  if (!navigator.mediaDevices?.enumerateDevices) return [];
+  const all = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+  state.cameras = all.filter((d) => d.kind === 'videoinput' && d.deviceId);
+  return state.cameras;
+}
+
+function cameraLabel(dev, i) {
+  const raw = (dev.label || '').trim();
+  if (!raw) return `カメラ${i + 1}`;
+  // 「FaceTime HD Camera (05ac:8514)」のような後ろの識別子は落とす
+  return raw.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '').slice(0, 18);
+}
+
+function renderCameraPicker() {
+  const box = $('#lensList');
+  box.innerHTML = '';
+  const cams = state.cameras;
+  // 1つしか無いなら選ばせる意味がない
+  $('#lensWrap').hidden = cams.length < 2;
+  if (cams.length < 2) return;
+  cams.forEach((d, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `chip lens${d.deviceId === state.cameraId ? ' active' : ''}`;
+    b.textContent = cameraLabel(d, i);
+    b.addEventListener('click', async () => {
+      state.cameraId = d.deviceId;
+      await startStream();
+    });
+    box.appendChild(b);
+  });
+}
+
+// 画づくりの注文。端末が出せる中でいちばん良いものを頼む。
+// ★ここに書いた値は「希望」であって、通らなければ端末が近いものを選ぶ。
+//   exact を使うと、その端末では一切開けなくなることがあるので使わない。
+function videoWants() {
+  return {
+    // 横向きが主。4Kが出せるならもらう（出せなければ端末が落としてくれる）
+    width: { ideal: 3840 },
+    height: { ideal: 2160 },
+    frameRate: { ideal: 30 },
+    aspectRatio: { ideal: 16 / 9 },
+    // 手ぶれ補正。iOS/Androidの一部だけが応える注文で、無ければ黙って無視される。
+    advanced: [
+      { videoStabilizationMode: 'standard' },
+      { imageStabilization: true },
+      { focusMode: 'continuous' },
+    ],
+  };
+}
+
 async function startStream() {
   stopStream();
   try {
+    // 選ばれているレンズがあればそれを、無ければ向きで頼む
+    const video = state.cameraId
+      ? { deviceId: { exact: state.cameraId }, ...videoWants() }
+      : { facingMode: facing, ...videoWants() };
     stream = await navigator.mediaDevices.getUserMedia({
-      // 横向きを主にするので、横長で要求する
-      video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1080 } },
-      audio: true,
+      video,
+      // 音も、加工を控えて素のまま録る
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
     });
+    await applyBestTrackSettings(stream);
+    // つながった今なら名前が読める。ここで一覧を作り直す。
+    const track = stream.getVideoTracks()[0];
+    state.cameraId = track?.getSettings?.().deviceId || state.cameraId;
+    await listCameras();
+    renderCameraPicker();
     $('#preview').srcObject = stream;
     $('#preview').hidden = false;
     $('#playback').hidden = true;
     setupZoom();
   } catch (err) {
+    // 選んだレンズが塞がっていることもあるので、その指定を捨ててもう一度だけ試す
+    if (state.cameraId) {
+      state.cameraId = null;
+      await startStream();
+      return;
+    }
     toast(`カメラを使えませんでした。ブラウザのカメラの許可を確認してください（${err.message}）`, 5000);
   }
+}
+
+// 端末が「できる」と言っている中で、いちばん良い設定へ寄せる。
+// 応えない端末では何も起きない（例外にしない）。
+async function applyBestTrackSettings(st) {
+  const track = st.getVideoTracks()[0];
+  if (!track?.getCapabilities) return;
+  const caps = track.getCapabilities() || {};
+  const wants = [];
+  // 手ぶれ補正は、名前が端末ごとに違う。使えると言っているものだけを頼む。
+  if (Array.isArray(caps.videoStabilizationMode) && caps.videoStabilizationMode.length) {
+    const best = ['cinematic-extended', 'cinematic', 'standard', 'auto']
+      .find((m) => caps.videoStabilizationMode.includes(m));
+    if (best) wants.push({ videoStabilizationMode: best });
+  }
+  if (caps.imageStabilization) wants.push({ imageStabilization: true });
+  if (Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) {
+    wants.push({ focusMode: 'continuous' });
+  }
+  // 出せる中でいちばん大きい絵にする
+  if (caps.width?.max && caps.height?.max) {
+    wants.push({ width: caps.width.max, height: caps.height.max });
+  }
+  if (!wants.length) return;
+  await track.applyConstraints({ advanced: wants }).catch(() => {});
 }
 
 function stopStream() {
@@ -1594,10 +1564,21 @@ function closeCapture() {
 async function shoot() {
   if (!stream) return;
   const seconds = state.log?.cut_seconds || 2;
-  const mime = ['video/mp4;codecs=h264,aac', 'video/webm;codecs=vp9,opus', 'video/webm']
+  // 録る形式。iPhoneは mp4/h264 しか出せないので、それを先に置く。
+  const mime = ['video/mp4;codecs=h264,aac', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm']
     .find((m) => MediaRecorder.isTypeSupported(m)) || '';
   chunks = [];
-  recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  // 画の粗さは、撮れている大きさに見合うところまで上げる。
+  // 既定のままだと2.5Mbpsほどに落とされ、細かいところが潰れる。
+  const track0 = stream.getVideoTracks()[0];
+  const st = track0?.getSettings?.() || {};
+  const px = (st.width || 1920) * (st.height || 1080);
+  const videoBitsPerSecond = Math.min(40_000_000, Math.max(8_000_000, Math.round(px * (st.frameRate || 30) * 0.12)));
+  recorder = new MediaRecorder(stream, {
+    ...(mime ? { mimeType: mime } : {}),
+    videoBitsPerSecond,
+    audioBitsPerSecond: 128_000,
+  });
   recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
   recorder.onstop = () => {
     const blob = new Blob(chunks, { type: recorder.mimeType || 'video/webm' });
@@ -1606,6 +1587,9 @@ async function shoot() {
   };
   recorder.start();
   const btn = $('#shootBtn');
+  btn.style.setProperty('--cut-seconds', `${seconds}s`);
+  btn.classList.remove('recording');
+  void btn.offsetWidth;          // いったん外して、輪を頭から回し直す
   btn.classList.add('recording');
   let left = seconds;
   $('#capTimer').textContent = `${left}`;
@@ -1634,7 +1618,21 @@ function showReview(url, kind) {
   }
 }
 
+let saving = false;
 async function saveCut() {
+  if (!pending || saving) return;   // 続けて押されても、送るのは一度だけ
+  saving = true;
+  const btn = $('#saveCutBtn');
+  btn.disabled = true;
+  try {
+    await sendCut();
+  } finally {
+    saving = false;
+    btn.disabled = false;
+  }
+}
+
+async function sendCut() {
   if (!pending) return;
   const fd = new FormData();
   const ext = pending.kind === 'photo' ? 'jpg' : (pending.mime.includes('mp4') ? 'mp4' : 'webm');
@@ -1659,7 +1657,18 @@ async function saveCut() {
   $('#noteInput').value = '';
   closeCapture();
   toast(`「${destName}」へ保存しました`);
-  await loadCuts();
+  await refreshAfterChange();
+}
+
+// 撮ったり消したりしたあと、いま開いている画面の中身を取り直す。
+// どのタブから撮っても、その場ですぐ増えるようにする。
+async function refreshAfterChange() {
+  await loadLogs();          // 一覧の件数と見本を新しくする
+  renderLogsList();
+  if (state.day) await reloadDay();
+  else await loadCuts();
+  if (state.tab === 'all') await loadAllCuts();
+  if (state.tab === 'map') { await loadMapCuts(); drawMap(); }
 }
 
 // ── 書き出し・共有・まとめ ─────────────────────────────
@@ -2370,7 +2379,15 @@ $('#capDest').addEventListener('click', openDestChooser);
 $('#destCancel').addEventListener('click', () => $('#destDialog').close());
 $('#closeCapture').addEventListener('click', closeCapture);
 $('#flipCam').addEventListener('click', async () => {
-  facing = facing === 'environment' ? 'user' : 'environment';
+  const cams = state.cameras;
+  if (cams.length > 1) {
+    // 実際にあるレンズを順に回す
+    const i = cams.findIndex((d) => d.deviceId === state.cameraId);
+    state.cameraId = cams[(i + 1) % cams.length].deviceId;
+  } else {
+    state.cameraId = null;
+    facing = facing === 'environment' ? 'user' : 'environment';
+  }
   await startStream();
 });
 $('#shootBtn').addEventListener('click', shoot);
@@ -2400,7 +2417,23 @@ $('#fileInput').addEventListener('change', async (e) => {
   showReview(URL.createObjectURL(file), 'video');
 });
 wireModals();
-wireMapDrag();
+
+// ── 画面の拡大縮小を止める ──────────────────────────────
+// アプリとして触るので、二本指の広げ縮めや、二度叩きで画面全体が拡大しないようにする。
+// （viewport の指定だけでは iOS が言うことを聞かないため、こちらでも受け止める）
+for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+  document.addEventListener(type, (ev) => ev.preventDefault(), { passive: false });
+}
+document.addEventListener('touchmove', (ev) => {
+  // 撮影の画面での二本指は、カメラのズームとして使うので通す
+  if (ev.touches.length > 1 && !ev.target.closest('#captureDialog')) ev.preventDefault();
+}, { passive: false });
+let lastTap = 0;
+document.addEventListener('touchend', (ev) => {
+  const now = ev.timeStamp;
+  if (now - lastTap < 300) ev.preventDefault();   // 二度叩きでの拡大を止める
+  lastTap = now;
+}, { passive: false });
 $('#advToggle').addEventListener('click', () => {
   const box = $('#advBox');
   const open = box.hidden;

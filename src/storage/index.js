@@ -32,7 +32,11 @@ class LocalStorage {
 
   async delete(key) { await fsp.unlink(this.full(key)).catch(() => {}); }
 
-  async stream(key) { return fs.createReadStream(this.full(key)); }
+  // range を渡すと、その範囲だけを読む（動画の頭出し・早送りに要る）
+  async stream(key, range) {
+    if (range) return fs.createReadStream(this.full(key), { start: range.start, end: range.end });
+    return fs.createReadStream(this.full(key));
+  }
 
   async size(key) {
     const st = await fsp.stat(this.full(key)).catch(() => null);
@@ -77,10 +81,12 @@ class S3Storage {
     return key;
   }
 
-  async stream(key) {
+  async stream(key, range) {
     await this.ready;
     const out = await this.client.send(new this.cmd.GetObjectCommand({
-      Bucket: this.opts.bucket, Key: this.objKey(key),
+      Bucket: this.opts.bucket,
+      Key: this.objKey(key),
+      ...(range ? { Range: `bytes=${range.start}-${range.end}` } : {}),
     }));
     return out.Body;
   }
