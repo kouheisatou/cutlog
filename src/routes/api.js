@@ -311,12 +311,26 @@ api.get('/logs', requireAuth, asyncRoute(async (req, res) => {
   const rows = await db.all(
     `SELECT l.*, m.role,
             (SELECT COUNT(*) FROM memberships mm WHERE mm.log_id = l.id) AS member_count,
-            (SELECT COUNT(*) FROM cuts c WHERE c.log_id = l.id AND c.deleted_at IS NULL) AS cut_count
+            (SELECT COUNT(*) FROM cuts c WHERE c.log_id = l.id AND c.deleted_at IS NULL) AS cut_count,
+            (SELECT c.id FROM cuts c WHERE c.log_id = l.id AND c.deleted_at IS NULL
+              ORDER BY c.taken_at DESC LIMIT 1) AS latest_cut_id,
+            (SELECT c.thumb_key FROM cuts c WHERE c.log_id = l.id AND c.deleted_at IS NULL
+              ORDER BY c.taken_at DESC LIMIT 1) AS latest_thumb_key,
+            (SELECT c.taken_at FROM cuts c WHERE c.log_id = l.id AND c.deleted_at IS NULL
+              ORDER BY c.taken_at DESC LIMIT 1) AS latest_taken_at
        FROM logs l JOIN memberships m ON m.log_id = l.id
       WHERE m.user_id = ?
       ORDER BY CASE WHEN l.kind = 'private' THEN 0 ELSE 1 END, l.created_at DESC`, [req.user.id],
   );
-  res.json({ logs: rows });
+  // 一覧に「最後に撮ったカット」の見本を出すため、あればその小さい画像の場所を添える。
+  res.json({
+    logs: rows.map((l) => ({
+      ...l,
+      latestCutId: l.latest_cut_id || null,
+      latestThumbUrl: l.latest_thumb_key ? `/api/media/${l.latest_cut_id}?thumb=1` : null,
+      latestTakenAt: l.latest_taken_at || null,
+    })),
+  });
 }));
 
 api.post('/logs', requireAuth, asyncRoute(async (req, res) => {
@@ -428,6 +442,32 @@ api.get('/logs/:logId/cuts', requireAuth, requireMember, asyncRoute(async (req, 
   sql += ' ORDER BY c.taken_at ASC';
   const rows = await db.all(sql, args);
   res.json({ cuts: rows.map(cutRow) });
+}));
+
+// 自分が入っている全てのログを横断して、カットを新しい順に返す。
+// 「全カット」の画面（写真アプリのような並び）が使う。
+// ログをまたぐので requireMember は使えない。memberships と内側で突き合わせて絞る。
+api.get('/cuts', requireAuth, asyncRoute(async (req, res) => {
+  const { date, q, kind, before } = req.query;
+  const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 200));
+  let sql = `SELECT c.*, u.display_name, l.name AS log_name, l.kind AS log_kind
+               FROM cuts c
+               JOIN users u ON u.id = c.user_id
+               JOIN logs l ON l.id = c.log_id
+               JOIN memberships m ON m.log_id = c.log_id AND m.user_id = ?
+              WHERE c.deleted_at IS NULL`;
+  const args = [req.user.id];
+  if (date) { sql += ' AND c.local_date = ?'; args.push(date); }
+  if (kind === 'photo' || kind === 'video') { sql += ' AND c.kind = ?'; args.push(kind); }
+  if (q) { sql += ' AND c.note LIKE ?'; args.push(`%${q}%`); }
+  // 続きを読むための目印。同じ時刻が並んだときに取りこぼさないよう、idも見る。
+  if (before) { sql += ' AND (c.taken_at < ? OR (c.taken_at = ? AND c.id < ?))'; args.push(before, before, req.query.beforeId || ''); }
+  sql += ' ORDER BY c.taken_at DESC, c.id DESC LIMIT ?';
+  args.push(limit);
+  const rows = await db.all(sql, args);
+  const cuts = rows.map((r) => ({ ...cutRow(r), logName: r.log_name, logKind: r.log_kind }));
+  const last = rows.length === limit ? rows[rows.length - 1] : null;
+  res.json({ cuts, nextBefore: last ? last.taken_at : null, nextBeforeId: last ? last.id : null });
 }));
 
 async function createCut(req, res, logId) {
