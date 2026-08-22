@@ -11,7 +11,6 @@ const state = {
   members: [],
   cuts: [],
   selected: new Set(),   // 書き出しのモーダルの中だけで使う
-  activeCutId: null,
   day: null,             // いま開いている日（YYYY-MM-DD）
   dayCuts: [],
   // 下のタブ（camera は撮影を開くだけの動き。画面としては残らない）
@@ -20,7 +19,10 @@ const state = {
   logsStack: 'logs',
   // 全カット（ログをまたいだ一覧）
   allCuts: [],
-  activeAllCutId: null,
+  mapPick: [],          // マップで押した場所に重なっていたカット
+  commentCut: null,     // コメントを開いているクリップ
+  detailCut: null,      // モーダルで開いているカット
+  detailFrom: '',
 };
 
 // ── API ─────────────────────────────────────────────────
@@ -83,6 +85,7 @@ function showAuth() {
   $('#logSetScreen').hidden = true;
   $('#allScreen').hidden = true;
   $('#mapScreen').hidden = true;
+  $('#mapListScreen').hidden = true;
   $('#settingsScreen').hidden = true;
   $('#tabbar').hidden = true;
   $('#authScreen').hidden = false;
@@ -91,14 +94,14 @@ function showAuth() {
 // 画面の深さ。奥へ進むときは右から、戻るときは左から出す。
 // 同じ深さ（タブの行き来）は、そっと入れ替える。
 const SCREEN_DEPTH = {
-  logs: 0, all: 0, map: 0, settings: 0, log: 1, logset: 2, day: 2,
+  logs: 0, all: 0, map: 0, settings: 0, log: 1, maplist: 1, logset: 2, day: 2,
 };
 let shownScreen = 'logs';
 
 function animateScreen(name) {
   const el = {
     logs: '#logsScreen', log: '#app', logset: '#logSetScreen', day: '#dayScreen',
-    all: '#allScreen', map: '#mapScreen', settings: '#settingsScreen',
+    all: '#allScreen', map: '#mapScreen', maplist: '#mapListScreen', settings: '#settingsScreen',
   }[name];
   const box = $(el);
   if (!box) return;
@@ -123,10 +126,11 @@ function showScreen(name) {
   $('#dayScreen').hidden = name !== 'day';
   $('#allScreen').hidden = name !== 'all';
   $('#mapScreen').hidden = name !== 'map';
+  $('#mapListScreen').hidden = name !== 'maplist';
   $('#settingsScreen').hidden = name !== 'settings';
   // 画面から離れるときは、鳴っているものを止める
   if (name !== 'day' && play.playing) togglePlay();
-  state.tab = { all: 'all', map: 'map', settings: 'settings' }[name] || 'logs';
+  state.tab = { all: 'all', map: 'map', maplist: 'map', settings: 'settings' }[name] || 'logs';
   if (state.tab === 'logs') state.logsStack = name;
   renderTabbar();
   renderCrumbs();
@@ -171,7 +175,7 @@ async function selectTab(tab) {
 // ── 左右にはらってタブを移る ────────────────────────────
 // 目盛りをつまむ動きや、映像の上での二本指と喧嘩しないよう、
 // 始まった場所と、横に大きく動いたかどうかで見分ける。
-const TAB_ORDER = ['camera', 'logs', 'all', 'map', 'settings'];
+const TAB_ORDER = ['camera', 'all', 'logs', 'map', 'settings'];
 const swipe = { x: 0, y: 0, t: 0, live: false };
 
 function swipeStartOk(target) {
@@ -240,9 +244,6 @@ function activeCutLabel(cut, { withDate = true } = {}) {
 
 function renderCrumbs() {
   const toLogs = () => { openLogs(); };
-  setCrumbs($('#logsCrumbs'), []);
-  setCrumbs($('#mapCrumbs'), []);
-  setCrumbs($('#settingsCrumbs'), []);
 
   setCrumbs($('#logCrumbs'), [{ label: 'ログ', go: toLogs }, { label: state.log ? state.log.name : '—' }]);
   setCrumbs($('#logSetCrumbs'), [
@@ -258,18 +259,25 @@ function renderCrumbs() {
     { label: state.log ? state.log.name : '—', go: toDay },
     { label: state.day ? state.day.replace(/-/g, '.') : '—' },
   ];
-  const openCut = state.dayCuts.find((c) => c.id === state.activeCutId);
-  if ($('#dayScreen').classList.contains('detail-open') && openCut) {
-    dayItems[2] = { label: state.day ? state.day.replace(/-/g, '.') : '—', go: () => closeDetailPane() };
-    dayItems.push({ label: activeCutLabel(openCut, { withDate: false }) });
+  if (state.detailCut && state.detailFrom === 'day') {
+    dayItems[2] = { label: state.day ? state.day.replace(/-/g, '.') : '—', go: () => closeCutDetail() };
+    dayItems.push({ label: activeCutLabel(state.detailCut, { withDate: false }) });
   }
   setCrumbs($('#dayCrumbs'), dayItems);
 
-  const openAll = state.allCuts.find((c) => c.id === state.activeAllCutId);
-  const allItems = ($('#allScreen').classList.contains('detail-open') && openAll)
-    ? [{ label: 'カット一覧', go: () => closeAllDetail() }, { label: activeCutLabel(openAll) }]
+  const allItems = (state.detailCut && state.detailFrom === 'all')
+    ? [{ label: 'カット一覧', go: () => closeCutDetail() }, { label: activeCutLabel(state.detailCut) }]
     : [];
   setCrumbs($('#allCrumbs'), allItems);
+
+  // マップ：てっぺんでは出さない。潜ったときだけ道すじにする。
+  const toMap = () => { state.mapPick = []; showScreen('map'); };
+  const mapItems = [{ label: 'マップ', go: toMap }, { label: `この場所の${state.mapPick.length}件` }];
+  if (state.detailCut && state.detailFrom === 'map') {
+    mapItems[1] = { label: `この場所の${state.mapPick.length}件`, go: () => closeCutDetail() };
+    mapItems.push({ label: activeCutLabel(state.detailCut) });
+  }
+  setCrumbs($('#mapListCrumbs'), mapItems);
 }
 
 async function loadLogs() {
@@ -442,42 +450,21 @@ function escapeHtml(s) {
 }
 
 // ── 詳細 ────────────────────────────────────────────────
-// 詳細は「ログの中」と「全カット」の2か所から開く。どちらの画面に描くかをここで決める。
+// 詳細は、どの画面から開いても同じモーダルに出す。
+// 文脈は「直したり消したりしたあと、何を取り直すか」を決めるためだけに使う。
 const DETAIL_CTX = {
-  day: {
-    screen: '#dayScreen',
-    detail: '#detail',
-    empty: '#detailEmpty',
-    setActive: (id) => { state.activeCutId = id; },
-    rerender: () => renderDayList(),
-    refresh: () => reloadDay(),
-  },
-  map: {
-    screen: '#mapScreen',
-    detail: '#mapDetail',
-    empty: '#mapDetailEmpty',
-    setActive: () => {},
-    rerender: () => drawMap(),
-    refresh: () => loadMapCuts().then(drawMap),
-  },
-  all: {
-    screen: '#allScreen',
-    detail: '#allDetail',
-    empty: '#allDetailEmpty',
-    setActive: (id) => { state.activeAllCutId = id; },
-    rerender: () => renderAll(),
-    refresh: () => loadAllCuts(),
-  },
+  day: { rerender: () => renderDayList(), refresh: () => reloadDay() },
+  map: { rerender: () => drawMap(), refresh: () => loadMapCuts().then(drawMap) },
+  all: { rerender: () => renderAll(), refresh: () => loadAllCuts() },
 };
 
 async function openDetail(cutId, ctxName = 'day') {
   const ctx = DETAIL_CTX[ctxName];
-  ctx.setActive(cutId);
-  $(ctx.screen).classList.add('detail-open');
+  state.detailFrom = ctxName;
   const { cut, reactions, myReactions, comments } = await api(`/cuts/${cutId}`);
-  const el = $(ctx.detail);
-  $(ctx.empty).hidden = true;
-  el.hidden = false;
+  state.detailCut = cut;
+  const el = $('#detail');
+  if (!$('#cutDialog').open) $('#cutDialog').showModal();
   const media = cut.kind === 'photo'
     ? `<img class="detail-media" src="${cut.url}" alt="" />`
     : `<video class="detail-media" src="${cut.url}" controls playsinline></video>`;
@@ -530,7 +517,10 @@ async function openDetail(cutId, ctxName = 'day') {
     </div>
     <div class="comments">
       <h3 class="small muted">コメント</h3>
-      ${comments.map((c) => `<div class="comment"><strong>${escapeHtml(c.author)}</strong> ${escapeHtml(c.body)}</div>`).join('')}
+      ${comments.map((c) => `<div class="comment">
+        ${avatarHtml(c.avatarUrl, c.author)}
+        <div class="c-body"><strong>${escapeHtml(c.author)}</strong><span>${escapeHtml(c.body)}</span></div>
+      </div>`).join('')}
       <div class="panel-row">
         <input id="commentInput" placeholder="コメントを書く" />
         <button class="btn" id="sendComment">送信</button>
@@ -551,12 +541,8 @@ async function openDetail(cutId, ctxName = 'day') {
     if (!confirm('このカットを削除しますか。ゴミ箱から戻せます。')) return;
     await api(`/cuts/${cut.id}`, { method: 'DELETE' });
     toast('カットを削除しました');
-    el.hidden = true;
-    $(ctx.empty).hidden = false;
-    ctx.setActive(null);
-    $(ctx.screen).classList.remove('detail-open');
+    closeCutDetail();
     await ctx.refresh();
-    renderCrumbs();
   });
   $$('.reaction', el).forEach((b) => b.addEventListener('click', async () => {
     await api(`/cuts/${cut.id}/reactions`, { method: 'POST', body: JSON.stringify({ emoji: b.dataset.emoji }) });
@@ -597,6 +583,16 @@ function closeModal(dlg) {
   if (dlg.id === 'captureDialog') { closeCapture(); return; }
   dlg.close();
 }
+
+// どの閉じ方（ばつ・外側・Esc）でも後始末が走るよう、閉じたことそのものを見る
+$('#cutDialog').addEventListener('close', () => {
+  if (!state.detailCut) return;
+  state.detailCut = null;
+  state.detailFrom = '';
+  $('#detail').innerHTML = '';
+  renderDayList();
+  renderCrumbs();
+});
 
 // ── マップ ──────────────────────────────────────────────
 // 撮った場所を地図の上に出す。地図の絵（タイル）は決まった住所から <img> で取るだけなので、
@@ -714,13 +710,7 @@ function drawMap() {
       : `このあたりの${cl.group.length}件`);
     pin.innerHTML = (c.thumbUrl ? `<img src="${c.thumbUrl}" alt="" />` : '<span></span>')
       + (one ? '' : `<span class="n">${cl.group.length}</span>`);
-    pin.addEventListener('click', () => {
-      if (one) { openDetail(c.id, 'map'); return; }
-      // まとまりを押したら、そこを真ん中にして寄る（分かれていく）
-      map.cx += (cl.px - w / 2) / TILE;
-      map.cy += (cl.py - h / 2) / TILE;
-      mapZoom(2);
-    });
+    pin.addEventListener('click', () => openCutsFromMap(cl.group.map((g) => g.cut)));
     pins.appendChild(pin);
   }
 }
@@ -761,10 +751,95 @@ function mapZoom(d) {
   drawMap();
 }
 
-function closeMapDetail() {
-  $('#mapScreen').classList.remove('detail-open');
-  drawMap();
-  renderCrumbs();
+// 地図で押した所に重なっていたカットを、マップの1つ下に並べる。
+// カット一覧のタブへは移らない（マップの中で潜っていく）。
+function openCutsFromMap(cuts) {
+  state.mapPick = cuts.slice().sort((a, b) => (a.takenAt < b.takenAt ? 1 : -1));
+  renderMapList();
+  showScreen('maplist');
+}
+
+function renderMapList() {
+  const body = $('#mapListBody');
+  body.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.className = 'photo-grid';
+  for (const c of state.mapPick) {
+    const cell = document.createElement('div');
+    cell.className = 'photo-cell';
+    const t = fmtTime(c.takenAt, c.tzOffset);
+    cell.innerHTML = `
+      ${c.thumbUrl ? `<img loading="lazy" src="${c.thumbUrl}" alt="" />` : '<span class="ph"></span>'}
+      <span class="cap"><span class="t">${t}</span><span class="lg">${escapeHtml(c.logName || '')}</span></span>`;
+    pressable(cell, `${escapeHtml(c.logName || '')} ${t} のカットを開く`, () => openDetail(c.id, 'map'));
+    wrap.appendChild(cell);
+  }
+  body.appendChild(wrap);
+}
+
+
+
+// ── コメント ────────────────────────────────────────────
+// その日の並びから、クリップごとに開いて読み書きする。
+async function openComments(cut) {
+  state.commentCut = cut;
+  $('#commentTitle').textContent = `${fmtTime(cut.takenAt, cut.tzOffset)} のコメント`;
+  $('#commentBox').value = '';
+  $('#commentList').innerHTML = '<span class="muted small">読み込んでいます…</span>';
+  if (!$('#commentDialog').open) $('#commentDialog').showModal();
+  await paintComments();
+}
+
+async function paintComments() {
+  const cut = state.commentCut;
+  if (!cut) return;
+  const { comments } = await api(`/cuts/${cut.id}`);
+  const box = $('#commentList');
+  box.innerHTML = comments.length ? '' : '<span class="muted small">まだコメントはありません。</span>';
+  for (const c of comments) {
+    const row = document.createElement('div');
+    row.className = 'comment';
+    row.innerHTML = `${avatarHtml(c.avatarUrl, c.author)}
+      <div class="c-body"><strong>${escapeHtml(c.author)}</strong><span>${escapeHtml(c.body)}</span></div>`;
+    if (c.userId === state.user?.id) {
+      const del = document.createElement('button');
+      del.className = 'mini';
+      del.textContent = '消す';
+      del.addEventListener('click', async () => {
+        await api(`/comments/${c.id}`, { method: 'DELETE' });
+        await paintComments();
+        await refreshCommentCounts();
+      });
+      row.appendChild(del);
+    }
+    box.appendChild(row);
+  }
+  // 数が変わっていれば、並びのしるしにも反映する
+  const target = state.dayCuts.find((x) => x.id === cut.id);
+  if (target) target.commentCount = comments.length;
+  renderDayList();
+}
+
+async function refreshCommentCounts() {
+  renderDayList();
+}
+
+// ── アカウントの顔 ──────────────────────────────────────
+// 絵を置いていない人は、名前の頭文字で出す。
+function avatarHtml(url, name, cls = '') {
+  const initial = escapeHtml(String(name || '?').trim().slice(0, 1).toUpperCase());
+  return url
+    ? `<span class="avatar ${cls}"><img src="${url}" alt="" /></span>`
+    : `<span class="avatar ${cls}">${initial}</span>`;
+}
+
+function paintMyAvatar() {
+  const u = state.user;
+  if (!u) return;
+  $('#myAvatar').innerHTML = u.avatarUrl
+    ? `<img src="${u.avatarUrl}?t=${Date.now()}" alt="" />`
+    : escapeHtml(String(u.displayName || u.username || '?').trim().slice(0, 1).toUpperCase());
+  $('#avatarClear').hidden = !u.avatarUrl;
 }
 
 // ── このログの設定 ──────────────────────────────────────
@@ -892,7 +967,7 @@ async function openDay(date) {
   state.dayCuts = state.cuts
     .filter((c) => c.localDate === date)
     .sort((a, b) => (a.takenAt < b.takenAt ? -1 : 1));
-  closeDetailPane();
+  closeCutDetail();
   showScreen('day');
   renderDayList();
   $('#pvEmpty').hidden = true;
@@ -966,6 +1041,13 @@ function renderDayList() {
       const i = play.items.findIndex((it) => it.cut.id === c.id);
       if (i >= 0) await showClip(i, 0, true);
     });
+    // コメントのしるし。押すと、そのクリップのコメントを読み書きできる。
+    const cm = document.createElement('button');
+    cm.type = 'button';
+    cm.className = 'clip-comment icon-btn';
+    cm.setAttribute('aria-label', `${t} のコメント`);
+    cm.innerHTML = `<svg class="ic sm"><use href="#ic-comment"/></svg>${c.commentCount ? `<span class="n">${c.commentCount}</span>` : ''}`;
+    cm.addEventListener('click', (ev) => { ev.stopPropagation(); openComments(c); });
     // 目のしるしで、出す・出さないを切り替える
     const eye = document.createElement('button');
     eye.type = 'button';
@@ -981,7 +1063,7 @@ function renderDayList() {
     info.setAttribute('aria-label', `${t} の詳細`);
     info.textContent = '詳細';
     info.addEventListener('click', (ev) => { ev.stopPropagation(); openDetail(c.id, 'day'); });
-    row.append(jump, eye, info);
+    row.append(jump, cm, eye, info);
     list.appendChild(row);
   }
   markActiveClip();
@@ -1632,11 +1714,11 @@ function cutLabel(cutId) {
   return c ? `${fmtTime(c.takenAt, c.tzOffset)} のカット` : cutId;
 }
 
-function closeDetailPane() {
-  state.activeCutId = null;
-  $('#detail').hidden = true;
-  $('#detailEmpty').hidden = false;
-  $('#dayScreen').classList.remove('detail-open');
+function closeCutDetail() {
+  if ($('#cutDialog').open) { $('#cutDialog').close(); return; }
+  state.detailCut = null;
+  state.detailFrom = '';
+  $('#detail').innerHTML = '';
   renderDayList();
   renderCrumbs();
 }
@@ -1692,7 +1774,7 @@ function openMove(cutIds, fromLogId, { single = false } = {}) {
           await api(`/cuts/${cutIds[0]}/move`, { method: 'POST', body: JSON.stringify({ logId: to }) });
           dlg.close();
           toast(`「${toName}」へ移しました`);
-          closeDetailPane();
+          closeCutDetail();
           await loadCuts();
           return;
         }
@@ -1973,14 +2055,15 @@ function renderAll() {
   paintAllFilter();
   const body = $('#allBody');
   body.innerHTML = '';
-  if (!state.allCuts.length) {
+  const shown = state.allCuts;
+  if (!shown.length) {
     body.innerHTML = `<div class="empty">${$('#allSearch').value.trim()
       ? '条件に合うカットはありません。' : 'まだカットがありません。カメラのタブから撮ってみてください。'}</div>`;
     return;
   }
   // 日付でひとまとまりにして、その中は撮った順に並べる。
   const map = new Map();
-  for (const c of state.allCuts) {
+  for (const c of shown) {
     if (!map.has(c.localDate)) map.set(c.localDate, []);
     map.get(c.localDate).push(c);
   }
@@ -1995,7 +2078,6 @@ function renderAll() {
     for (const c of cuts) {
       const cell = document.createElement('div');
       cell.className = 'photo-cell';
-      if (state.activeAllCutId === c.id) { cell.className += ' active'; cell.setAttribute('aria-current', 'true'); }
       const timeLabel = fmtTime(c.takenAt, c.tzOffset);
       cell.innerHTML = `
         ${c.thumbUrl ? `<img loading="lazy" src="${c.thumbUrl}" alt="" />` : '<span class="ph"></span>'}
@@ -2007,15 +2089,9 @@ function renderAll() {
   }
 }
 
-function closeAllDetail() {
-  $('#allScreen').classList.remove('detail-open');
-  state.activeAllCutId = null;
-  renderAll();
-  renderCrumbs();
-}
-
 // ── 設定（ログ一覧と並ぶ画面） ──────────────────────────
 function openSettings() {
+  paintMyAvatar();
   const r = state.reminder || {};
   $('#remMode').value = r.mode || 'off';
   $('#remTimes').value = r.times || '';
@@ -2235,7 +2311,37 @@ $('#advToggle').addEventListener('click', () => {
   $('#advToggle').setAttribute('aria-expanded', String(open));
   $('#advToggle').textContent = open ? '詳しい設定を隠す' : '詳しい設定を出す';
 });
+$('#mapListBack').addEventListener('click', () => { state.mapPick = []; showScreen('map'); });
+$('#commentSend').addEventListener('click', async () => {
+  const body = $('#commentBox').value.trim();
+  if (!body || !state.commentCut) return;
+  await api(`/cuts/${state.commentCut.id}/comments`, { method: 'POST', body: JSON.stringify({ body }) });
+  $('#commentBox').value = '';
+  await paintComments();
+});
+$('#commentBox').addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter') { ev.preventDefault(); $('#commentSend').click(); }
+});
 // カット一覧の検索は、虫めがねから開くモーダルで行う
+$('#avatarInput').addEventListener('change', async (ev) => {
+  const file = ev.target.files?.[0];
+  ev.target.value = '';
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file, file.name);
+  try {
+    const { user } = await api('/me/avatar', { method: 'POST', body: fd });
+    state.user = user;
+    paintMyAvatar();
+    toast('顔の絵を変えました');
+  } catch (err) { toast(err.message, 4000); }
+});
+$('#avatarClear').addEventListener('click', async () => {
+  const { user } = await api('/me/avatar', { method: 'DELETE' });
+  state.user = user;
+  paintMyAvatar();
+  toast('顔の絵を外しました');
+});
 $('#allSearchBtn').addEventListener('click', () => {
   $('#searchHint').textContent = state.allCuts.length
     ? `いま ${state.allCuts.length} 件を出しています。`
@@ -2268,7 +2374,9 @@ $('#createLog').addEventListener('click', async () => {
   state.logId = log.id;
   $('#newLogName').value = '';
   await loadLogs();
-  showScreen('log');
+  // 作ってすぐ撮れるように、このログを開いた状態でカメラを出す
+  // （loadLogs の中で新しいログが読み込まれ、行き先も秒数もそこに揃う）
+  openCapture();
 });
 $('#joinLog').addEventListener('click', async () => {
   const code = $('#joinCode').value.trim();

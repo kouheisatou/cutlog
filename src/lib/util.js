@@ -57,6 +57,18 @@ export async function makeThumb(input, output) {
   }
 }
 
+// アカウントの顔用に、真ん中を正方形で切り出して小さくする。
+export async function makeSquare(input, output, size = 256) {
+  try {
+    await run(config.ffmpeg.bin, ['-y', '-i', input, '-frames:v', '1',
+      '-vf', `scale=${size}:${size}:force_original_aspect_ratio=increase,crop=${size}:${size}`,
+      '-q:v', '4', output]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // tzOffset は JavaScript の getTimezoneOffset()（UTCより遅れている分数。JSTなら -540）
 export function localDateOf(takenAtIso, tzOffsetMinutes) {
   const t = new Date(takenAtIso).getTime() - tzOffsetMinutes * 60 * 1000;

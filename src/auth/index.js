@@ -65,6 +65,8 @@ export function publicUser(u) {
     email: u.email || null,
     isAdmin: !!u.is_admin,
     provider: u.auth_provider,
+    // 顔の絵。置いていない人は null（画面では頭文字を出す）
+    avatarUrl: u.avatar_key ? `/api/avatar/${u.id}` : null,
   };
 }
 

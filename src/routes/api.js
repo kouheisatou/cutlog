@@ -14,7 +14,7 @@ import {
   publicUser, parseCookies, oidcAuthUrl, oidcCallback,
 } from '../auth/index.js';
 import {
-  id, inviteCode, hashPassword, verifyPassword, ffprobe, makeThumb, localDateOf, sha256File, asyncRoute,
+  id, inviteCode, hashPassword, verifyPassword, ffprobe, makeThumb, makeSquare, localDateOf, sha256File, asyncRoute,
 } from '../lib/util.js';
 import { enqueue, getJob } from '../jobs/queue.js';
 import { ensurePrivateLog, isPrivate } from '../lib/private-log.js';
@@ -426,6 +426,7 @@ function cutRow(c) {
     localDate: c.local_date,
     note: c.note,
     hidden: !!Number(c.hidden || 0),
+    commentCount: Number(c.comment_count || 0),
     // 撮った場所。分からないときは null のままにする。
     lat: c.lat ?? null,
     lon: c.lon ?? null,
@@ -439,7 +440,9 @@ function cutRow(c) {
 
 api.get('/logs/:logId/cuts', requireAuth, requireMember, asyncRoute(async (req, res) => {
   const { from, to, date, author, tag, q } = req.query;
-  let sql = `SELECT c.*, u.display_name FROM cuts c JOIN users u ON u.id = c.user_id
+  let sql = `SELECT c.*, u.display_name,
+                (SELECT COUNT(*) FROM comments cm WHERE cm.cut_id = c.id AND cm.deleted_at IS NULL) AS comment_count
+               FROM cuts c JOIN users u ON u.id = c.user_id
               WHERE c.log_id = ? AND c.deleted_at IS NULL`;
   const args = [req.params.logId];
   if (date) { sql += ' AND c.local_date = ?'; args.push(date); }
@@ -560,7 +563,7 @@ api.get('/cuts/:cutId', requireAuth, asyncRoute(async (req, res) => {
   );
   const mine = await db.all('SELECT emoji FROM reactions WHERE cut_id = ? AND user_id = ?', [c.id, req.user.id]);
   const comments = await db.all(
-    `SELECT cm.*, u.display_name FROM comments cm JOIN users u ON u.id = cm.user_id
+    `SELECT cm.*, u.display_name, u.avatar_key FROM comments cm JOIN users u ON u.id = cm.user_id
       WHERE cm.cut_id = ? AND cm.deleted_at IS NULL ORDER BY cm.created_at`, [c.id],
   );
   return res.json({
@@ -568,7 +571,12 @@ api.get('/cuts/:cutId', requireAuth, asyncRoute(async (req, res) => {
     reactions,
     myReactions: mine.map((m) => m.emoji),
     comments: comments.map((x) => ({
-      id: x.id, body: x.body, author: x.display_name, userId: x.user_id, createdAt: x.created_at,
+      id: x.id,
+      body: x.body,
+      author: x.display_name,
+      userId: x.user_id,
+      avatarUrl: x.avatar_key ? `/api/avatar/${x.user_id}` : null,
+      createdAt: x.created_at,
     })),
   });
 }));
@@ -755,6 +763,44 @@ api.get('/media/:cutId', asyncRoute(async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="${key}"`);
   }
   const body = await storage.stream(key);
+  return body.pipe(res);
+}));
+
+// ── アカウントの顔 ──────────────────────────────────────
+// 上げた画像は、正方形の小さなJPEGに直してから置く（大きな絵をそのまま抱えない）。
+api.post('/me/avatar', requireAuth, uploadFile('file'), asyncRoute(async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'ファイルがありません' });
+  if (!String(req.file.mimetype || '').startsWith('image/')) {
+    await fsp.unlink(req.file.path).catch(() => {});
+    return res.status(400).json({ error: '画像を選んでください' });
+  }
+  const key = `av_${req.user.id}.jpg`;
+  const tmp = path.join(paths.tmp, key);
+  const ok = await makeSquare(req.file.path, tmp);
+  await fsp.unlink(req.file.path).catch(() => {});
+  if (!ok) return res.status(400).json({ error: 'この画像は読めませんでした' });
+  await storage.put(key, tmp);
+  await fsp.unlink(tmp).catch(() => {});
+  await db.run('UPDATE users SET avatar_key = ? WHERE id = ?', [key, req.user.id]);
+  const u = await db.get('SELECT * FROM users WHERE id = ?', [req.user.id]);
+  return res.json({ user: publicUser(u) });
+}));
+
+api.delete('/me/avatar', requireAuth, asyncRoute(async (req, res) => {
+  await db.run('UPDATE users SET avatar_key = NULL WHERE id = ?', [req.user.id]);
+  const u = await db.get('SELECT * FROM users WHERE id = ?', [req.user.id]);
+  return res.json({ user: publicUser(u) });
+}));
+
+// 顔の絵は、ログインしている人にだけ配る（誰の顔かはIDで指す）。
+api.get('/avatar/:userId', requireAuth, asyncRoute(async (req, res) => {
+  const u = await db.get('SELECT avatar_key FROM users WHERE id = ?', [req.params.userId]);
+  if (!u || !u.avatar_key) return res.status(404).end();
+  res.setHeader('Content-Type', 'image/jpeg');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+  const body = await storage.stream(u.avatar_key);
   return body.pipe(res);
 }));
 

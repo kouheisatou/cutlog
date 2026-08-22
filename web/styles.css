@@ -35,6 +35,9 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 
+/* アイコンの型紙。並びの中で高さを作らないよう、流れから外しておく */
+.sprite { position: absolute !important; width: 0; height: 0; overflow: hidden; }
+
 /* ── アプリらしい手ざわり ───────────────────────────────
    文字は掴めないようにして、押した所が青く光らないようにする。
    書く場所（入力欄）だけは、これまでどおり選べる。 */
@@ -49,7 +52,7 @@ button, .tab-item, .seg, .chip, .mini, .btn, .log-row, .clip-row, .cal-day, .pho
   touch-action: manipulation;   /* 二度押しで拡大するときの待ちを無くす */
 }
 /* 指で流すときに、勢いを残して滑らかに止める */
-.screen-body, .list-body, .day-list, .detail-pane, .pick-list, .move-list, .share-list {
+.screen-body, .list-body, .day-list, .pick-list, .move-list, .share-list {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   scroll-behavior: smooth;
@@ -114,7 +117,7 @@ button { cursor: pointer; }
 .seg:hover { color: var(--ink); }
 .seg.active { color: var(--ink); border-bottom-color: var(--ink); }
 
-.body { flex: 1; display: grid; grid-template-columns: minmax(340px, 420px) minmax(0, 1fr); min-height: 0; }
+.body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .list-pane { display: flex; flex-direction: column; min-height: 0; }
 
 .list-toolbar { display: flex; gap: var(--s3); align-items: center; padding: var(--s1) var(--s4) var(--s2); }
@@ -123,8 +126,15 @@ button { cursor: pointer; }
 }
 .list-toolbar input[type=search]::placeholder { color: var(--mute); }
 .list-toolbar select { color: var(--mute); }
-.check { display: inline-flex; align-items: center; gap: var(--s1); white-space: nowrap; font-size: 11px; color: var(--mute); text-transform: none; min-height: 24px; }
-input[type=checkbox] { accent-color: var(--ink); width: 16px; height: 16px; }
+.check {
+  display: inline-flex; align-items: center; gap: var(--s1);
+  font-size: 11px; color: var(--mute); text-transform: none; min-height: 32px;
+  line-height: 1.2;
+}
+input[type=checkbox] {
+  accent-color: var(--ink); width: 16px; height: 16px;
+  flex: none; margin: 0;   /* 既定の余白が入ると、文字と中心がずれる */
+}
 
 .selection-bar {
   display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap;
@@ -227,7 +237,6 @@ button.cal-day:disabled { cursor: default; }
 .cal-day.on .bar i { background: var(--sel-ink); }
 
 /* ── 詳細：余白で組む ───────────────────────────────── */
-.detail-pane { overflow: auto; padding: var(--s4) var(--s5) var(--s6); scrollbar-width: thin; }
 .detail { max-width: 640px; }
 /* 一覧が横に見えている広い画面では、戻るボタンを出さない */
 .empty {
@@ -321,6 +330,8 @@ dialog.sheet::backdrop { background: rgba(16,16,18,.55); }
   font-family: var(--mono); font-size: 11px; letter-spacing: .12em;
   text-transform: uppercase; color: var(--mute);
 }
+/* 四角と文字を組にするときは、高さの中心をそろえる（文字の下端に合わせない） */
+.panel-row label.check { align-items: center; }
 .panel-row input, .panel-row select {
   padding: 6px 0; border-bottom: 1px solid var(--hair); color: var(--ink); min-width: 0; font-size: 14px;
 }
@@ -539,7 +550,7 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
 .tab-item.active .ic { stroke-width: 1.9; }
 
 /* タブバーのぶん、中身の下に余白を作る */
-.tabbar-pad, .screen-body, .list-body, .detail-pane { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+.tabbar-pad, .screen-body, .list-body, .day-list { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
 
 /* 全カット：写真のアプリのように、日付ごとに詰めて並べる */
 .all-day-head { padding-left: var(--s4); padding-right: var(--s4); }
@@ -567,16 +578,11 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
 /* タブレット：詳細を細くしすぎない */
 @media (max-width: 1100px) {
   :root { --s5: 36px; --s6: 56px; }
-  .body { grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); }
 }
 
 /* スマホ：一覧と詳細を切り替える */
 @media (max-width: 880px) {
   :root { --gutter: 58px; --s3: 18px; --s4: 20px; --s5: 28px; --s6: 44px; }
-  .body { grid-template-columns: minmax(0, 1fr); }
-  .detail-pane { display: none; padding: var(--s3) var(--s4) calc(64px + env(safe-area-inset-bottom)); }
-  .app.detail-open .list-pane { display: none; }
-  .app.detail-open .detail-pane { display: block; }
   .topbar { gap: var(--s2); padding: var(--s2) var(--s4) var(--s1); flex-wrap: wrap; row-gap: 0; }
   .crumb { font-size: 11px; max-width: 46vw; }
   .crumbs li:last-child .crumb { max-width: 60vw; }
@@ -684,13 +690,13 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
 .day-list { overflow: auto; flex: 1; padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
 .clip-row {
   position: relative; display: grid;
-  grid-template-columns: 52px 56px minmax(0, 1fr) 38px 38px;
+  grid-template-columns: 52px 56px minmax(0, 1fr) 38px 38px auto;
   align-items: center; gap: var(--s2); padding: var(--s1) var(--s4);
   border-left: 2px solid transparent;
 }
 .clip-row .clip-hit { position: absolute; inset: 0; background: none; }
 .clip-row .tc, .clip-row .thumb, .clip-row .meta { pointer-events: none; }
-.clip-row .clip-eye, .clip-row .clip-info { position: relative; z-index: 1; }
+.clip-row .clip-eye, .clip-row .clip-info, .clip-row .clip-comment { position: relative; z-index: 1; }
 .clip-row:hover { background: var(--paper-2); }
 .clip-row .tc { font-size: 12px; color: var(--mute); letter-spacing: .06em; }
 .clip-row .thumb { width: 56px; height: 34px; background: var(--paper-2); overflow: hidden; }
@@ -862,3 +868,47 @@ label.icon-btn { cursor: pointer; }
 }
 .filter-bar .tc { font-family: var(--mono); letter-spacing: .06em; }
 #allSearch { width: 100%; font-size: 16px; }
+
+/* 見出しの帯を持たない画面は、上の余白を自分で持つ */
+.screen-body.top, .body.top { padding-top: max(var(--s3), env(safe-area-inset-top)); }
+.map-count {
+  position: absolute; left: 8px; bottom: 6px;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .08em;
+  color: var(--ink-soft); background: rgba(255,255,255,.7);
+  padding: 1px 6px; border-radius: 3px; pointer-events: none;
+}
+
+/* ── アカウントの顔 ─────────────────────────────────── */
+.avatar {
+  flex: none; width: 30px; height: 30px; border-radius: 50%;
+  background: var(--paper-2); color: var(--ink-soft);
+  display: inline-grid; place-items: center; overflow: hidden;
+  font-family: var(--mono); font-size: 12px; letter-spacing: 0;
+}
+.avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avatar.lg { width: 64px; height: 64px; font-size: 22px; }
+.avatar-row { display: flex; align-items: center; gap: var(--s2); }
+label#avatarPick { cursor: pointer; }
+
+/* コメントは顔と一緒に出す */
+.comment { display: flex; align-items: flex-start; gap: var(--s2); padding: var(--s1) 0; }
+.comment .c-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.comment .c-body strong { font-size: 12px; color: var(--ink-soft); }
+.comment .c-body span { font-size: 14px; overflow-wrap: anywhere; }
+
+/* クリップの詳細のモーダルは、少し広く使う */
+.wide-panel { width: min(720px, 96vw); }
+
+/* マップは、下のタブ以外を全部使う（上に白い帯を作らない） */
+.body.full { padding: 0; }
+#mapScreen .list-pane { flex: 1; min-height: 0; }
+#mapScreen .map-host { flex: 1; min-height: 0; }
+
+/* クリップの並びの、コメントのしるし */
+.clip-comment { position: relative; }
+.clip-comment .n {
+  position: absolute; top: 2px; right: 0;
+  min-width: 15px; height: 15px; border-radius: 999px;
+  background: var(--sel); color: var(--sel-ink);
+  font-family: var(--mono); font-size: 9px; line-height: 15px; text-align: center; padding: 0 3px;
+}

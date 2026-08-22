@@ -8,7 +8,7 @@
 <title>cutlog</title>
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="/styles.css?v=0.9.9" />
+<link rel="stylesheet" href="/styles.css?v=0.12.3" />
 </head>
 <body>
 <svg class="sprite" aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute">
@@ -41,16 +41,14 @@
   <symbol id="ic-sound" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6"/></g></symbol>
   <symbol id="ic-mute" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M16 10l4 4M20 10l-4 4"/></g></symbol>
   <symbol id="ic-expand" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/></g></symbol>
+  <symbol id="ic-comment" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></g></symbol>
   <symbol id="ic-pin" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></g></symbol>
   <symbol id="ic-lock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="6" y="11" width="12" height="9"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"/></g></symbol>
 </svg>
 
 <!-- ログ一覧（最上位の画面。作成・参加・各ログの招待コードもここ） -->
 <div id="logsScreen" class="app" hidden>
-  <header class="topbar">
-    <nav id="logsCrumbs" class="crumbs" aria-label="いまいる場所"></nav>
-  </header>
-  <main class="screen-body">
+  <main class="screen-body top">
     <nav aria-label="ログ一覧">
       <div id="logsList" class="logs-list"></div>
     </nav>
@@ -101,7 +99,7 @@
       <span class="muted small">秒</span>
     </div>
     <div class="panel-row">
-      <label class="check"><input type="checkbox" id="logSetDefault" /> 行き先を決めずに撮ったカットを、このログに入れる</label>
+      <label class="check"><input type="checkbox" id="logSetDefault" /> デフォルトでこのログに保存する</label>
     </div>
     <div class="panel-row">
       <button id="logSetSave" class="btn primary">保存</button>
@@ -183,10 +181,6 @@
       <div id="dayList" class="day-list"></div>
     </aside>
 
-    <section id="detailPane" class="detail-pane">
-      <div id="detailEmpty" class="empty"></div>
-      <div id="detail" hidden></div>
-    </section>
   </main>
 </div>
 
@@ -210,10 +204,6 @@
       </div>
       <div id="allBody" class="list-body"></div>
     </aside>
-    <section id="allDetailPane" class="detail-pane">
-      <div id="allDetailEmpty" class="empty"></div>
-      <div id="allDetail" hidden></div>
-    </section>
   </main>
 </div>
 
@@ -430,33 +420,35 @@
 
 <!-- マップ（撮った場所を地図の上に出す） -->
 <div id="mapScreen" class="app" hidden>
-  <header class="topbar">
-    <nav id="mapCrumbs" class="crumbs" aria-label="いまいる場所"></nav>
-    <div class="spacer"></div>
-    <span id="mapCount" class="muted crumb-meta"></span>
-  </header>
-  <main class="body">
+  <main class="body full">
     <aside class="list-pane">
       <div class="map-host" id="mapHost">
         <div class="map-tiles" id="mapTiles"></div>
         <div class="map-pins" id="mapPins"></div>
         <div class="map-empty" id="mapEmpty" hidden>場所の分かるカットがまだありません。</div>
         <div class="map-credit" id="mapCredit"></div>
+        <div class="map-count" id="mapCount"></div>
       </div>
     </aside>
-    <section id="mapDetailPane" class="detail-pane">
-      <div id="mapDetailEmpty" class="empty"></div>
-      <div id="mapDetail" hidden></div>
-    </section>
+  </main>
+</div>
+
+<!-- マップで押した場所のカット（マップの1つ下） -->
+<div id="mapListScreen" class="app" hidden>
+  <header class="topbar">
+    <button id="mapListBack" class="icon-btn" aria-label="マップへ戻る"><svg class="ic"><use href="#ic-back"/></svg></button>
+    <nav id="mapListCrumbs" class="crumbs" aria-label="いまいる場所"></nav>
+  </header>
+  <main class="body">
+    <aside class="list-pane">
+      <div id="mapListBody" class="list-body"></div>
+    </aside>
   </main>
 </div>
 
 <!-- 設定（ログ一覧と並ぶ画面。既定の記録先・撮影の通知・アカウントだけ） -->
 <div id="settingsScreen" class="app" hidden>
-  <header class="topbar">
-    <nav id="settingsCrumbs" class="crumbs" aria-label="いまいる場所"></nav>
-  </header>
-  <main class="screen-body">
+  <main class="screen-body top">
     <section>
       <h2>撮影の通知</h2>
       <div class="panel-row">
@@ -482,6 +474,13 @@
     </section>
     <section>
       <h2>アカウント</h2>
+      <div class="panel-row avatar-row">
+        <span class="avatar lg" id="myAvatar"></span>
+        <label class="btn" id="avatarPick">
+          顔の絵を選ぶ<input id="avatarInput" type="file" accept="image/*" hidden />
+        </label>
+        <button id="avatarClear" class="btn">外す</button>
+      </div>
       <div class="panel-row">
         <span id="whoami" class="muted"></span>
         <div class="spacer"></div>
@@ -508,11 +507,11 @@
   <button class="tab-item" data-tab="camera" type="button">
     <svg class="ic"><use href="#ic-camera"/></svg><span>カメラ</span>
   </button>
-  <button class="tab-item" data-tab="logs" type="button" aria-current="page">
-    <svg class="ic"><use href="#ic-list"/></svg><span>ログ</span>
-  </button>
   <button class="tab-item" data-tab="all" type="button">
     <svg class="ic"><use href="#ic-grid"/></svg><span>カット一覧</span>
+  </button>
+  <button class="tab-item" data-tab="logs" type="button" aria-current="page">
+    <svg class="ic"><use href="#ic-list"/></svg><span>ログ</span>
   </button>
   <button class="tab-item" data-tab="map" type="button">
     <svg class="ic"><use href="#ic-pin"/></svg><span>マップ</span>
@@ -521,6 +520,27 @@
     <svg class="ic"><use href="#ic-settings"/></svg><span>設定</span>
   </button>
 </nav>
+
+<!-- クリップの詳細（どの画面からも、同じモーダルで開く） -->
+<dialog id="cutDialog" class="sheet">
+  <div class="panel wide-panel">
+    <button type="button" class="panel-close icon-btn" data-close aria-label="閉じる"><svg class="ic"><use href="#ic-close"/></svg></button>
+    <div id="detail"></div>
+  </div>
+</dialog>
+
+<!-- コメント（その日のクリップの並びから開く） -->
+<dialog id="commentDialog" class="sheet">
+  <div class="panel">
+    <button type="button" class="panel-close icon-btn" data-close aria-label="閉じる"><svg class="ic"><use href="#ic-close"/></svg></button>
+    <h2 id="commentTitle">コメント</h2>
+    <div id="commentList" class="comments"></div>
+    <div class="panel-row">
+      <input id="commentBox" placeholder="コメントを書く" autocomplete="off" />
+      <button id="commentSend" class="btn primary">送信</button>
+    </div>
+  </div>
+</dialog>
 
 <!-- 検索（カット一覧から開く） -->
 <dialog id="searchDialog" class="sheet">
@@ -539,6 +559,6 @@
 </dialog>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-<script type="module" src="/app.js?v=0.9.9"></script>
+<script type="module" src="/app.js?v=0.12.3"></script>
 </body>
 </html>
