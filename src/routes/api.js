@@ -421,6 +421,7 @@ function cutRow(c) {
     tzOffset: c.tz_offset,
     localDate: c.local_date,
     note: c.note,
+    hidden: !!Number(c.hidden || 0),
     tags: c.tags ? String(c.tags).split(',').filter(Boolean) : [],
     checksum: c.checksum,
     createdAt: c.created_at,
@@ -559,7 +560,10 @@ api.patch('/cuts/:cutId', requireAuth, asyncRoute(async (req, res) => {
   if (!c) return res.status(404).json({ error: '見つかりません' });
   const note = req.body?.note !== undefined ? String(req.body.note).slice(0, 500) : c.note;
   const tags = Array.isArray(req.body?.tags) ? req.body.tags.join(',').slice(0, 200) : c.tags;
-  await db.run('UPDATE cuts SET note = ?, tags = ?, updated_at = ? WHERE id = ?', [note, tags, nowIso(), c.id]);
+  // 非表示は「そのログでこのカットを出すか」の状態。消すこととは別に持つ。
+  const hidden = req.body?.hidden !== undefined ? (req.body.hidden ? 1 : 0) : Number(c.hidden || 0);
+  await db.run('UPDATE cuts SET note = ?, tags = ?, hidden = ?, updated_at = ? WHERE id = ?',
+    [note, tags, hidden, nowIso(), c.id]);
   const row = await db.get(
     'SELECT c.*, u.display_name FROM cuts c JOIN users u ON u.id = c.user_id WHERE c.id = ?', [c.id],
   );

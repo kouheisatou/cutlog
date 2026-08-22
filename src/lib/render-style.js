@@ -17,9 +17,9 @@ export const TIME_FORMATS = {
 };
 
 export const DEFAULT_STYLE = {
-  size: 'portrait',
-  width: 720,
-  height: 1280,
+  size: 'landscape',
+  width: 1280,
+  height: 720,
   fit: 'contain',            // contain=全部入れて余白を足す / cover=画面いっぱいに切り抜く
   background: '#000000',
   fps: 30,

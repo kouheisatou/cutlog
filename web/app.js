@@ -10,12 +10,11 @@ const state = {
   log: null,
   members: [],
   cuts: [],
-  view: 'timeline',
-  selected: new Set(),
-  selectMode: false,
+  selected: new Set(),   // 書き出しのモーダルの中だけで使う
   activeCutId: null,
+  day: null,             // いま開いている日（YYYY-MM-DD）
+  dayCuts: [],
   calMonth: new Date(),
-  dateFilter: null,
   mode: 'video',
   // 下のタブ（camera は撮影を開くだけの動き。画面としては残らない）
   tab: 'logs',
@@ -83,6 +82,8 @@ function applyMe(me) {
 function showAuth() {
   $('#logsScreen').hidden = true;
   $('#app').hidden = true;
+  $('#dayScreen').hidden = true;
+  $('#logSetScreen').hidden = true;
   $('#allScreen').hidden = true;
   $('#settingsScreen').hidden = true;
   $('#tabbar').hidden = true;
@@ -94,8 +95,12 @@ function showAuth() {
 function showScreen(name) {
   $('#logsScreen').hidden = name !== 'logs';
   $('#app').hidden = name !== 'log';
+  $('#logSetScreen').hidden = name !== 'logset';
+  $('#dayScreen').hidden = name !== 'day';
   $('#allScreen').hidden = name !== 'all';
   $('#settingsScreen').hidden = name !== 'settings';
+  // 画面から離れるときは、鳴っているものを止める
+  if (name !== 'day' && play.playing) togglePlay();
   state.tab = name === 'all' ? 'all' : 'logs';
   if (name !== 'all') state.logsStack = name;
   renderTabbar();
@@ -172,13 +177,26 @@ function renderCrumbs() {
   setCrumbs($('#logsCrumbs'), [{ label: 'ログ' }]);
   setCrumbs($('#settingsCrumbs'), [{ label: 'ログ', go: toLogs }, { label: '設定' }]);
 
-  const logItems = [{ label: 'ログ', go: toLogs }, { label: state.log ? state.log.name : '—' }];
-  const openCut = state.cuts.find((c) => c.id === state.activeCutId);
-  if ($('#app').classList.contains('detail-open') && openCut) {
-    logItems[1] = { label: state.log ? state.log.name : '—', go: () => closeDetailPane() };
-    logItems.push({ label: activeCutLabel(openCut) });
+  setCrumbs($('#logCrumbs'), [{ label: 'ログ', go: toLogs }, { label: state.log ? state.log.name : '—' }]);
+  setCrumbs($('#logSetCrumbs'), [
+    { label: 'ログ', go: toLogs },
+    { label: state.log ? state.log.name : '—', go: () => showScreen('log') },
+    { label: '設定' },
+  ]);
+
+  // その日の詳細。カットの詳しい画面をひらいているときは、もう一段深くなる。
+  const toDay = () => { closeDay(); showScreen('log'); };
+  const dayItems = [
+    { label: 'ログ', go: toLogs },
+    { label: state.log ? state.log.name : '—', go: toDay },
+    { label: state.day ? state.day.replace(/-/g, '.') : '—' },
+  ];
+  const openCut = state.dayCuts.find((c) => c.id === state.activeCutId);
+  if ($('#dayScreen').classList.contains('detail-open') && openCut) {
+    dayItems[2] = { label: state.day ? state.day.replace(/-/g, '.') : '—', go: () => closeDetailPane() };
+    dayItems.push({ label: activeCutLabel(openCut) });
   }
-  setCrumbs($('#logCrumbs'), logItems);
+  setCrumbs($('#dayCrumbs'), dayItems);
 
   const allItems = [{ label: '全カット' }];
   const openAll = state.allCuts.find((c) => c.id === state.activeAllCutId);
@@ -217,7 +235,6 @@ async function loadLog() {
 
 async function loadCuts() {
   const params = new URLSearchParams();
-  if (state.dateFilter) params.set('date', state.dateFilter);
   const author = $('#authorFilter').value;
   if (author) params.set('author', author);
   const tag = $('#tagFilter').value;
@@ -243,30 +260,13 @@ function rebuildTagOptions(cuts) {
 }
 
 // ── 一覧の描画 ──────────────────────────────────────────
+// ログの画面はカレンダーだけ。日をひらくと、その日の詳細（つないだ再生）へ進む。
 function render() {
-  // ここはログの画面の切り替えだけを触る（全カットの絞り込みも .seg を使っているため）
-  $$('#app .seg').forEach((b) => {
-    const on = b.dataset.view === state.view;
-    b.classList.toggle('active', on);
-    b.setAttribute('aria-selected', String(on));
-  });
-  $('#selectionBar').hidden = !state.selectMode;
-  $('#selectionCount').textContent = `${state.selected.size}件`;
   const body = $('#listBody');
   body.innerHTML = '';
-  if (state.view === 'calendar') renderCalendar(body);
-  else if (state.view === 'grid') renderGrid(body);
-  else renderTimeline(body);
+  renderCalendar(body);
 }
 
-function groupByDate(cuts) {
-  const map = new Map();
-  for (const c of cuts) {
-    if (!map.has(c.localDate)) map.set(c.localDate, []);
-    map.get(c.localDate).push(c);
-  }
-  return [...map.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
-}
 
 function pressable(el, label, fn) {
   el.setAttribute('role', 'button');
@@ -278,90 +278,9 @@ function pressable(el, label, fn) {
   });
 }
 
-function cutRowEl(c) {
-  const el = document.createElement('div');
-  el.className = `cut-row${state.activeCutId === c.id ? ' active' : ''}`;
-  if (state.activeCutId === c.id) el.setAttribute('aria-current', 'true');
-  el.dataset.id = c.id;
-  const timeLabel = fmtTime(c.takenAt, c.tzOffset);
-  const pick = state.selectMode
-    ? `<input type="checkbox" class="pick" tabindex="-1" ${state.selected.has(c.id) ? 'checked' : ''} />` : '';
-  el.className += state.selectMode ? ' selecting' : '';
-  if (state.selected.has(c.id)) el.className += ' picked';
-  el.innerHTML = `
-    ${pick}
-    <div class="tc">${timeLabel}<span class="dot"></span></div>
-    ${c.thumbUrl ? `<img class="frame" loading="lazy" src="${c.thumbUrl}" alt="" />` : '<div class="frame"></div>'}
-    <div class="meta">
-      <div class="n">${c.note ? escapeHtml(c.note) : escapeHtml(c.author || '')}</div>
-      <div class="k">${c.kind === 'photo' ? 'PHOTO' : 'VIDEO'} · ${fmtBytes(c.bytes)}</div>
-    </div>`;
-  pressable(el, state.selectMode ? `${timeLabel} のカットを選ぶ` : `${timeLabel} のカットを開く`, (ev) => {
-    if (state.selectMode) {
-      toggleSelect(c.id);
-      const box = el.querySelector('.pick');
-      if (box && ev.target !== box) box.checked = state.selected.has(c.id);
-      el.classList.toggle('picked', state.selected.has(c.id));
-      return;
-    }
-    openDetail(c.id);
-  });
-  return el;
-}
 
-function emptyMessage() {
-  const filtered = state.dateFilter || $('#search').value.trim() || $('#authorFilter').value || $('#tagFilter').value;
-  return filtered ? '条件に合うカットはありません。' : 'まだカットがありません。';
-}
 
-function renderTimeline(body) {
-  const groups = groupByDate(state.cuts);
-  if (!groups.length) { body.innerHTML = `<div class="empty">${emptyMessage()}</div>`; return; }
-  for (const [date, cuts] of groups) {
-    const head = document.createElement('div');
-    head.className = 'day-head';
-    head.innerHTML = `<span>${date.replace(/-/g, '.')}</span><span class="muted">${String(cuts.length).padStart(2, '0')} cuts</span>`;
-    const btn = document.createElement('button');
-    btn.className = 'mini';
-    btn.textContent = 'この日を選択';
-    btn.addEventListener('click', () => {
-      state.selectMode = true;
-      $('#selectMode').checked = true;
-      cuts.forEach((c) => state.selected.add(c.id));
-      render();
-    });
-    head.appendChild(btn);
-    body.appendChild(head);
-    cuts.forEach((c) => body.appendChild(cutRowEl(c)));
-  }
-}
 
-function renderGrid(body) {
-  const wrap = document.createElement('div');
-  wrap.className = 'grid-wrap';
-  if (!state.cuts.length) { body.innerHTML = `<div class="empty">${emptyMessage()}</div>`; return; }
-  for (const c of state.cuts) {
-    const cell = document.createElement('div');
-    cell.className = 'grid-cell';
-    if (state.activeCutId === c.id) { cell.className += ' active'; cell.setAttribute('aria-current', 'true'); }
-    const timeLabel = fmtTime(c.takenAt, c.tzOffset);
-    cell.innerHTML = `
-      ${c.thumbUrl ? `<img loading="lazy" src="${c.thumbUrl}" alt="" />` : ''}
-      <span class="t">${timeLabel}</span>
-      ${state.selectMode ? `<input type="checkbox" class="pick" tabindex="-1" ${state.selected.has(c.id) ? 'checked' : ''} />` : ''}`;
-    pressable(cell, state.selectMode ? `${timeLabel} のカットを選ぶ` : `${timeLabel} のカットを開く`, (ev) => {
-      if (state.selectMode) {
-        toggleSelect(c.id);
-        const box = cell.querySelector('.pick');
-        if (box && ev.target !== box) box.checked = state.selected.has(c.id);
-        return;
-      }
-      openDetail(c.id);
-    });
-    wrap.appendChild(cell);
-  }
-  body.appendChild(wrap);
-}
 
 function renderCalendar(body) {
   const wrap = document.createElement('div');
@@ -377,7 +296,7 @@ function renderCalendar(body) {
     <strong>${y}.${String(m + 1).padStart(2, '0')}</strong>
     <button class="mini" id="calNext" aria-label="次の月"><svg class="ic sm"><use href="#ic-next"/></svg></button>
     <div class="spacer"></div>
-    ${state.dateFilter ? `<button class="mini" id="calClear">${state.dateFilter} を解除</button>` : ''}`;
+    <span class="muted small">${state.cuts.length}カット</span>`;
   wrap.appendChild(head);
   const grid = document.createElement('div');
   grid.className = 'cal-grid';
@@ -401,30 +320,20 @@ function renderCalendar(body) {
     const el = document.createElement('button');
     el.type = 'button';
     el.className = `cal-day${n ? ' has' : ''}${date === today ? ' today' : ''}`;
-    if (state.dateFilter === date) el.className += ' on';
+    if (state.day === date) el.className += ' on';
     if (!n) el.disabled = true;
     el.setAttribute('aria-label', `${m + 1}月${d}日、${n}カット`);
     const bars = Array.from({ length: Math.min(n, 6) }, () => '<i></i>').join('');
     el.innerHTML = `<span class="d">${String(d).padStart(2, '0')}</span><span class="bar">${bars}</span>`;
-    el.addEventListener('click', async () => {
-      state.dateFilter = state.dateFilter === date ? null : date;
-      state.view = 'timeline';
-      await loadCuts();
-    });
+    el.addEventListener('click', () => openDay(date));
     grid.appendChild(el);
   }
   wrap.appendChild(grid);
   body.appendChild(wrap);
   $('#calPrev').addEventListener('click', () => { state.calMonth = new Date(y, m - 1, 1); render(); });
   $('#calNext').addEventListener('click', () => { state.calMonth = new Date(y, m + 1, 1); render(); });
-  $('#calClear')?.addEventListener('click', async () => { state.dateFilter = null; await loadCuts(); });
 }
 
-function toggleSelect(cutId) {
-  if (state.selected.has(cutId)) state.selected.delete(cutId);
-  else state.selected.add(cutId);
-  $('#selectionCount').textContent = `${state.selected.size}件`;
-}
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
@@ -433,13 +342,13 @@ function escapeHtml(s) {
 // ── 詳細 ────────────────────────────────────────────────
 // 詳細は「ログの中」と「全カット」の2か所から開く。どちらの画面に描くかをここで決める。
 const DETAIL_CTX = {
-  log: {
-    screen: '#app',
+  day: {
+    screen: '#dayScreen',
     detail: '#detail',
     empty: '#detailEmpty',
     setActive: (id) => { state.activeCutId = id; },
-    rerender: () => render(),
-    refresh: () => loadCuts(),
+    rerender: () => renderDayList(),
+    refresh: () => reloadDay(),
   },
   all: {
     screen: '#allScreen',
@@ -451,7 +360,7 @@ const DETAIL_CTX = {
   },
 };
 
-async function openDetail(cutId, ctxName = 'log') {
+async function openDetail(cutId, ctxName = 'day') {
   const ctx = DETAIL_CTX[ctxName];
   ctx.setActive(cutId);
   $(ctx.screen).classList.add('detail-open');
@@ -544,6 +453,530 @@ async function openDetail(cutId, ctxName = 'log') {
   });
 }
 
+
+
+
+// ── このログの設定 ──────────────────────────────────────
+// ログに関わることは、全体の設定ではなくここに集める。
+// 名前・1クリップの長さ・行き先の既定・招待コード・いる人・共有リンク・ゴミ箱。
+function openLogSettings() {
+  const l = state.log;
+  if (!l) return;
+  $('#logSetName').value = l.name;
+  $('#logSetSeconds').value = Number(l.cut_seconds) || CLIP_SECONDS_DEFAULT;
+  $('#logSetDefault').checked = (state.defaultLogId || state.privateLogId) === l.id;
+  const owner = state.role === 'owner';
+  $('#logSetName').disabled = !owner;
+  $('#logSetSeconds').disabled = !owner;
+  $('#logSetSave').disabled = !owner;
+  $('#logSetRotate').disabled = !owner;
+  const priv = l.kind === 'private';
+  $('#logSetInviteRow').hidden = priv;
+  $('#logSetInvite').textContent = l.invite_code || '';
+  $('#logSetMemberCount').textContent = `${state.members.length}人`;
+  renderLogMembers();
+  $('#logSetTrashList').innerHTML = '';
+  showScreen('logset');
+}
+
+function renderLogMembers() {
+  const box = $('#logSetMembers');
+  box.innerHTML = '';
+  for (const m of state.members) {
+    const row = document.createElement('div');
+    row.className = 'member-row';
+    const isOwner = m.id === state.log.owner_id;
+    row.innerHTML = `<span class="n">${escapeHtml(m.display_name)}</span>
+      <span class="muted small">${isOwner ? 'オーナー' : 'メンバー'}</span>`;
+    if (state.role === 'owner' && !isOwner) {
+      const out = document.createElement('button');
+      out.className = 'mini';
+      out.textContent = '外す';
+      out.addEventListener('click', async () => {
+        if (!confirm(`${m.display_name} をこのログから外しますか。`)) return;
+        await api(`/logs/${state.logId}/members/${m.id}`, { method: 'DELETE' });
+        toast('外しました');
+        await loadLog();
+        renderLogMembers();
+        $('#logSetMemberCount').textContent = `${state.members.length}人`;
+      });
+      row.appendChild(out);
+    }
+    box.appendChild(row);
+  }
+}
+
+async function saveLogSettings() {
+  const name = $('#logSetName').value.trim();
+  const cutSeconds = Math.min(30, Math.max(1, Number($('#logSetSeconds').value) || CLIP_SECONDS_DEFAULT));
+  await api(`/logs/${state.logId}`, { method: 'PATCH', body: JSON.stringify({ name, cutSeconds }) });
+  // 行き先の既定は利用者ごとの設定なので、こちらは /me へ送る
+  const wantDefault = $('#logSetDefault').checked;
+  const isDefault = (state.defaultLogId || state.privateLogId) === state.logId;
+  if (wantDefault !== isDefault) {
+    const to = wantDefault ? state.logId : state.privateLogId;
+    const res = await api('/me', {
+      method: 'PATCH',
+      body: JSON.stringify({ defaultLogId: to === state.privateLogId ? null : to }),
+    });
+    state.defaultLogId = res.defaultLogId;
+  }
+  await loadLogs();
+  await loadLog();
+  toast('保存しました');
+  openLogSettings();
+}
+
+async function showTrash() {
+  const { cuts } = await api(`/logs/${state.logId}/trash`);
+  const box = $('#logSetTrashList');
+  box.innerHTML = cuts.length ? '' : '<span class="muted small">消したカットはありません。</span>';
+  for (const c of cuts) {
+    const row = document.createElement('div');
+    row.className = 'member-row';
+    row.innerHTML = `<span class="n">${c.localDate} ${fmtTime(c.takenAt, c.tzOffset)}　${escapeHtml(c.note || '')}</span>`;
+    const back = document.createElement('button');
+    back.className = 'mini';
+    back.textContent = '戻す';
+    back.addEventListener('click', async () => {
+      await api(`/cuts/${c.id}/restore`, { method: 'POST' });
+      toast('戻しました');
+      await loadCuts();
+      showTrash();
+    });
+    row.appendChild(back);
+    box.appendChild(row);
+  }
+}
+
+// ── その日の詳細 ────────────────────────────────────────
+// つないだ再生と、その日のクリップの並び。
+// ここでの「非表示」は選ぶことではなく、そのカットを出すかどうかの状態である。
+// 書き出しに何を入れるかは、書き出しのモーダルで改めて選んでもらう。
+function daysWithCuts() {
+  return [...new Set(state.cuts.map((c) => c.localDate))].sort();
+}
+
+function visibleDayIds() {
+  return state.dayCuts.filter((c) => !c.hidden).map((c) => c.id);
+}
+
+// 書き出しのモーダルには、非表示のぶんも並べる（そこで選び直せるように）
+function dayIds() {
+  return state.dayCuts.map((c) => c.id);
+}
+
+function updatePickCount() {
+  const all = $$('#exportList input[type=checkbox]').length;
+  $('#pickCount').textContent = `${$$('#exportList input:checked').length} / ${all} 件`;
+}
+
+function setPicks(on) {
+  $$('#exportList input[type=checkbox]').forEach((i) => { i.checked = on; });
+  updatePickCount();
+}
+
+async function openDay(date) {
+  state.day = date;
+  state.dayCuts = state.cuts
+    .filter((c) => c.localDate === date)
+    .sort((a, b) => (a.takenAt < b.takenAt ? -1 : 1));
+  closeDetailPane();
+  showScreen('day');
+  renderDayList();
+  $('#pvEmpty').hidden = true;
+  stopPlayer();
+  await buildPlaylist(state.dayCuts);
+  renderScrub();
+  const days = daysWithCuts();
+  const i = days.indexOf(date);
+  $('#dayPrevDay').disabled = i <= 0;
+  $('#dayNextDay').disabled = i < 0 || i >= days.length - 1;
+  if (play.items.length) {
+    await showClip(0, 0, false);
+  } else {
+    $('#pvEmpty').hidden = false;
+    paintProgress();
+  }
+  paintPlayBtn();
+  renderCrumbs();
+}
+
+function closeDay() {
+  stopPlayer();
+  state.day = null;
+  state.dayCuts = [];
+}
+
+async function stepDay(dir) {
+  const days = daysWithCuts();
+  const i = days.indexOf(state.day);
+  const next = days[i + dir];
+  if (!next) return;
+  await openDay(next);
+}
+
+function markActiveClip() {
+  const cur = play.items[play.idx]?.cut.id;
+  $$('#dayList .clip-row').forEach((el) => {
+    el.classList.toggle('now', el.dataset.id === cur);
+  });
+}
+
+function renderDayList() {
+  const list = $('#dayList');
+  const shown = state.dayCuts.filter((c) => !c.hidden).length;
+  $('#dayCount').textContent = `${shown} / ${state.dayCuts.length} クリップ　${fmtClock(play.total)}`;
+  list.innerHTML = '';
+  if (!state.dayCuts.length) {
+    list.innerHTML = '<div class="empty">この日のカットはありません。</div>';
+    return;
+  }
+  for (const c of state.dayCuts) {
+    const row = document.createElement('div');
+    row.className = `clip-row${c.hidden ? ' off' : ''}`;
+    row.dataset.id = c.id;
+    const t = fmtTime(c.takenAt, c.tzOffset);
+    const shownMs = play.items.find((it) => it.cut.id === c.id)?.dur
+      ?? (c.kind === 'photo' ? clipMs() : Math.min(clipMs(), Number(c.durationMs) || clipMs()));
+    const len = `${(shownMs / 1000).toFixed(1)}秒`;
+    row.innerHTML = `
+      <span class="tc">${t}</span>
+      <span class="thumb">${c.thumbUrl ? `<img loading="lazy" src="${c.thumbUrl}" alt="" />` : ''}</span>
+      <span class="meta">
+        <span class="n">${c.note ? escapeHtml(c.note) : escapeHtml(c.author || '')}</span>
+        <span class="k">${c.kind === 'photo' ? 'PHOTO' : 'VIDEO'} · ${len}${c.hidden ? ' · 非表示' : ''}</span>
+      </span>`;
+    // 行を押すと、その位置から続きを流す
+    const jump = document.createElement('button');
+    jump.type = 'button';
+    jump.className = 'clip-hit';
+    jump.setAttribute('aria-label', `${t} から再生する`);
+    jump.addEventListener('click', async () => {
+      if (c.hidden) { toast('非表示のクリップです。目のしるしを押すと戻せます'); return; }
+      const i = play.items.findIndex((it) => it.cut.id === c.id);
+      if (i >= 0) await showClip(i, 0, true);
+    });
+    // 目のしるしで、出す・出さないを切り替える
+    const eye = document.createElement('button');
+    eye.type = 'button';
+    eye.className = 'clip-eye icon-btn';
+    eye.setAttribute('aria-label', c.hidden ? `${t} を表示に戻す` : `${t} を非表示にする`);
+    eye.setAttribute('aria-pressed', String(!!c.hidden));
+    eye.innerHTML = `<svg class="ic sm"><use href="#ic-${c.hidden ? 'eye-off' : 'eye'}"/></svg>`;
+    eye.addEventListener('click', (ev) => { ev.stopPropagation(); toggleHidden(c); });
+    // 情報のしるしで、そのカットの詳しい画面をひらく
+    const info = document.createElement('button');
+    info.type = 'button';
+    info.className = 'clip-info icon-btn';
+    info.setAttribute('aria-label', `${t} の詳しい情報`);
+    info.innerHTML = '<svg class="ic sm"><use href="#ic-search"/></svg>';
+    info.addEventListener('click', (ev) => { ev.stopPropagation(); openDetail(c.id, 'day'); });
+    row.append(jump, eye, info);
+    list.appendChild(row);
+  }
+  markActiveClip();
+}
+
+// 非表示は残る状態なので、サーバへ預ける（同じログの人にも同じ見え方になる）
+async function toggleHidden(cut) {
+  const next = !cut.hidden;
+  try {
+    await api(`/cuts/${cut.id}`, { method: 'PATCH', body: JSON.stringify({ hidden: next }) });
+  } catch (err) {
+    toast(err.message);
+    return;
+  }
+  cut.hidden = next;
+  const inAll = state.cuts.find((c) => c.id === cut.id);
+  if (inAll) inAll.hidden = next;
+  toast(next ? '非表示にしました' : '表示に戻しました');
+  // 出すものが変わったので、通しの時間軸を作り直す
+  const keepId = play.items[play.idx]?.cut.id;
+  const wasPlaying = play.playing;
+  play.playing = false;
+  cancelAnimationFrame(play.raf);
+  await buildPlaylist(state.dayCuts);
+  renderScrub();
+  renderDayList();
+  if (!play.items.length) {
+    stopPlayer();
+    $('#pvEmpty').hidden = false;
+    paintProgress();
+    paintPlayBtn();
+    return;
+  }
+  $('#pvEmpty').hidden = true;
+  const back = play.items.findIndex((it) => it.cut.id === keepId);
+  await showClip(back >= 0 ? back : 0, 0, wasPlaying);
+}
+
+// ── つないだ再生 ────────────────────────────────────────
+// その日のクリップを、1本の動画のように続けて出す。
+// 作り直し（エンコード）はしない。<video> を2つ用意し、片方を出している間に
+// もう片方へ次を読ませておいて、切れ目で入れ替える。写真は決めた秒数だけ出す。
+const play = {
+  items: [],        // [{ cut, start, dur }] 通しの時間軸に並べたもの
+  total: 0,
+  idx: -1,
+  playing: false,
+  muted: false,
+  raf: null,
+  photoAt: 0,       // 写真を出し始めた時刻（performance.now）
+  photoDone: 0,     // 写真をすでに出した長さ（止めたぶんを足していく）
+  front: 'A',       // いま前に出している <video>
+};
+
+const CLIP_SECONDS_DEFAULT = 2;
+const vidEl = (k) => $(k === 'A' ? '#pvA' : '#pvB');
+const frontEl = () => vidEl(play.front);
+const backEl = () => vidEl(play.front === 'A' ? 'B' : 'A');
+// 1クリップの長さ。写真も動画も同じだけ出す。ログごとに変えられる。
+const clipMs = () => (Number(state.log?.cut_seconds) || CLIP_SECONDS_DEFAULT) * 1000;
+
+const fmtClock = (ms) => {
+  const t = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+};
+
+// 長さの分からない動画があると、通しの時間軸が作れない。
+// 見えないところで頭出しだけ読ませて、実際の長さを測る。
+async function measureDuration(url) {
+  return new Promise((resolve) => {
+    const v = document.createElement('video');
+    v.preload = 'metadata';
+    v.muted = true;
+    const done = (ms) => { v.removeAttribute('src'); v.load?.(); resolve(ms); };
+    const timer = setTimeout(() => done(0), 4000);
+    v.addEventListener('loadedmetadata', () => {
+      clearTimeout(timer);
+      done(Number.isFinite(v.duration) ? Math.round(v.duration * 1000) : 0);
+    }, { once: true });
+    v.addEventListener('error', () => { clearTimeout(timer); done(0); }, { once: true });
+    v.src = url;
+  });
+}
+
+// 通しの時間軸を作る。どのクリップも同じ長さで並べる。
+// 動画がその長さより短いときだけ、実際の長さに合わせる（黒いままにしないため）。
+async function buildPlaylist(cuts) {
+  const use = cuts.filter((c) => !c.hidden);
+  const unit = clipMs();
+  const items = [];
+  let at = 0;
+  for (const c of use) {
+    let dur = unit;
+    if (c.kind !== 'photo') {
+      let real = Number(c.durationMs) || 0;
+      if (!real) real = await measureDuration(c.url);
+      if (real) dur = Math.min(unit, real);
+    }
+    items.push({ cut: c, start: at, dur });
+    at += dur;
+  }
+  play.items = items;
+  play.total = at;
+}
+
+function renderScrub() {
+  const segs = $('#pvSegs');
+  segs.innerHTML = '';
+  if (!play.total) return;
+  // クリップの切れ目を細い隙間で見せる。1本に見えつつ、区切りも分かるようにする。
+  for (const it of play.items) {
+    const seg = document.createElement('i');
+    seg.style.width = `${(it.dur / play.total) * 100}%`;
+    segs.appendChild(seg);
+  }
+  $('#pvScrub').setAttribute('aria-valuemax', String(Math.round(play.total / 1000)));
+}
+
+// いま通しで何ミリ秒めか
+function currentGlobal() {
+  if (play.idx < 0 || !play.items[play.idx]) return 0;
+  const it = play.items[play.idx];
+  if (it.cut.kind === 'photo') {
+    const run = play.playing ? performance.now() - play.photoAt : 0;
+    return it.start + Math.min(it.dur, play.photoDone + run);
+  }
+  const v = frontEl();
+  const cur = Number.isFinite(v.currentTime) ? v.currentTime * 1000 : 0;
+  return it.start + Math.min(it.dur, cur);
+}
+
+function paintProgress() {
+  const g = currentGlobal();
+  const pct = play.total ? (g / play.total) * 100 : 0;
+  $('#pvHead').style.left = `${Math.max(0, Math.min(100, pct))}%`;
+  $('#pvClock').textContent = `${fmtClock(g)} / ${fmtClock(play.total)}`;
+  $('#pvScrub').setAttribute('aria-valuenow', String(Math.round(g / 1000)));
+  const it = play.items[play.idx];
+  $('#pvBadge').textContent = it
+    ? `${play.idx + 1} / ${play.items.length}　${fmtTime(it.cut.takenAt, it.cut.tzOffset)}${it.cut.note ? `　${it.cut.note}` : ''}`
+    : '';
+  markActiveClip();
+}
+
+function loop() {
+  cancelAnimationFrame(play.raf);
+  const step = () => {
+    paintProgress();
+    const it = play.items[play.idx];
+    if (it && play.playing) {
+      if (it.cut.kind === 'photo') {
+        // 写真は <video> の ended が来ないので、自分で終わりを見張る
+        const run = play.photoDone + (performance.now() - play.photoAt);
+        if (run >= it.dur) { nextClip(true); return; }
+      } else if (frontEl().currentTime * 1000 >= it.dur - 30) {
+        // 長い動画でも、決めた秒数で次へ送る
+        nextClip(true); return;
+      }
+    }
+    if (play.playing) play.raf = requestAnimationFrame(step);
+  };
+  play.raf = requestAnimationFrame(step);
+}
+
+// 次のクリップを、裏の <video> に先に読ませておく（切れ目を短くするため）
+function preload(i) {
+  const nx = play.items[i + 1];
+  if (!nx || nx.cut.kind === 'photo') return;
+  const b = backEl();
+  if (b.dataset.cutId !== nx.cut.id) {
+    b.dataset.cutId = nx.cut.id;
+    b.src = nx.cut.url;
+    b.muted = true;
+    b.load();
+  }
+}
+
+async function showClip(i, offsetMs = 0, autoplay = play.playing) {
+  const it = play.items[i];
+  if (!it) return;
+  play.idx = i;
+  const img = $('#pvImg');
+  const a = $('#pvA'); const b = $('#pvB');
+
+  if (it.cut.kind === 'photo') {
+    a.pause(); b.pause();
+    a.classList.remove('on'); b.classList.remove('on');
+    img.src = it.cut.url;
+    img.hidden = false;
+    play.photoDone = Math.min(offsetMs, it.dur);
+    play.photoAt = performance.now();
+  } else {
+    img.hidden = true;
+    // 裏に読み込み済みならそれを前に出す。無ければ前のものを差し替える。
+    let el = frontEl();
+    if (backEl().dataset.cutId === it.cut.id) {
+      play.front = play.front === 'A' ? 'B' : 'A';
+      el = frontEl();
+    } else if (el.dataset.cutId !== it.cut.id) {
+      el.dataset.cutId = it.cut.id;
+      el.src = it.cut.url;
+      el.load();
+    }
+    const other = backEl();
+    other.pause();
+    other.classList.remove('on');
+    el.classList.add('on');
+    el.muted = play.muted;
+    try {
+      if (el.readyState < 1) await new Promise((r) => el.addEventListener('loadedmetadata', r, { once: true }));
+      el.currentTime = Math.min(offsetMs, Math.max(0, it.dur - 60)) / 1000;
+    } catch { /* 読めないときはそのまま先へ進む */ }
+    if (autoplay) { try { await el.play(); } catch { /* 端末が止めたら手で押してもらう */ } }
+  }
+  preload(i);
+  renderDayList();
+  paintProgress();
+  if (autoplay) { play.playing = true; loop(); }
+  paintPlayBtn();
+}
+
+function paintPlayBtn() {
+  const use = play.playing ? '#ic-pause' : '#ic-play';
+  $('#pvPlay').querySelector('use').setAttribute('href', use);
+  $('#pvPlay').setAttribute('aria-label', play.playing ? '一時停止' : '再生');
+  $('#player').classList.toggle('playing', play.playing);
+}
+
+async function playFrom(globalMs) {
+  if (!play.items.length) return;
+  const ms = Math.max(0, Math.min(globalMs, play.total - 1));
+  let i = play.items.findIndex((it) => ms < it.start + it.dur);
+  if (i < 0) i = play.items.length - 1;
+  await showClip(i, ms - play.items[i].start, play.playing);
+}
+
+async function togglePlay() {
+  if (!play.items.length) return;
+  if (play.playing) {
+    play.playing = false;
+    cancelAnimationFrame(play.raf);
+    const it = play.items[play.idx];
+    if (it?.cut.kind === 'photo') play.photoDone += performance.now() - play.photoAt;
+    else frontEl().pause();
+    paintPlayBtn();
+    return;
+  }
+  play.playing = true;
+  if (play.idx < 0) { await showClip(0, 0, true); return; }
+  const it = play.items[play.idx];
+  if (it.cut.kind === 'photo') {
+    if (play.photoDone >= it.dur) play.photoDone = 0;
+    play.photoAt = performance.now();
+  } else {
+    try { await frontEl().play(); } catch { /* 端末が止めたときは何もしない */ }
+  }
+  paintPlayBtn();
+  loop();
+}
+
+async function nextClip(auto = false) {
+  if (play.idx + 1 >= play.items.length) {
+    // 最後まで来たら止めて、頭に戻しておく
+    play.playing = false;
+    cancelAnimationFrame(play.raf);
+    if (auto) { await showClip(play.items.length - 1, play.items[play.items.length - 1].dur, false); }
+    play.playing = false;
+    paintPlayBtn();
+    paintProgress();
+    return;
+  }
+  await showClip(play.idx + 1, 0, play.playing || auto);
+}
+
+async function prevClip() {
+  // 頭出しの作法：少し進んでいたらそのクリップの先頭へ、すぐなら1つ前へ
+  const it = play.items[play.idx];
+  const into = it ? currentGlobal() - it.start : 0;
+  if (into > 1500 || play.idx <= 0) await showClip(Math.max(0, play.idx), 0, play.playing);
+  else await showClip(play.idx - 1, 0, play.playing);
+}
+
+function stopPlayer() {
+  play.playing = false;
+  cancelAnimationFrame(play.raf);
+  for (const k of ['A', 'B']) {
+    const v = vidEl(k);
+    v.pause();
+    v.removeAttribute('src');
+    delete v.dataset.cutId;
+    v.load();
+    v.classList.remove('on');
+  }
+  $('#pvImg').hidden = true;
+  $('#pvImg').removeAttribute('src');
+  play.items = []; play.total = 0; play.idx = -1;
+}
+
+function scrubToEvent(ev) {
+  const r = $('#pvScrub').getBoundingClientRect();
+  const x = (ev.touches?.[0]?.clientX ?? ev.clientX) - r.left;
+  return (Math.max(0, Math.min(r.width, x)) / r.width) * play.total;
+}
+
 // ── 撮影 ────────────────────────────────────────────────
 function updateCapDest() {
   const l = state.logs.find((x) => x.id === state.captureLogId);
@@ -575,7 +1008,7 @@ let facing = 'environment';
 async function openCapture() {
   const dlg = $('#captureDialog');
   dlg.showModal();
-  $('#capTimer').textContent = `${state.log?.cut_seconds || 3}秒`;
+  $('#capTimer').textContent = `${state.log?.cut_seconds || 2}秒`;
   state.captureLogId = state.logId;
   updateCapDest();
   await startStream();
@@ -623,7 +1056,7 @@ async function shoot() {
     showReview(URL.createObjectURL(blob), 'photo');
     return;
   }
-  const seconds = state.log?.cut_seconds || 3;
+  const seconds = state.log?.cut_seconds || 2;
   const mime = ['video/mp4;codecs=h264,aac', 'video/webm;codecs=vp9,opus', 'video/webm']
     .find((m) => MediaRecorder.isTypeSupported(m)) || '';
   chunks = [];
@@ -692,7 +1125,7 @@ async function saveCut() {
 function openPicker(kind, presetIds) {
   const dlg = $('#exportDialog');
   const ids = presetIds || [...state.selected];
-  if (!ids.length) { toast('カットが選ばれていません。「まとめて選択」をオンにしてから選んでください'); return; }
+  if (!ids.length) { toast('この日にはカットがありません'); return; }
   const titles = { export: 'カットの書き出し', share: '共有リンクの作成', render: 'まとめ動画の作成' };
   const goLabels = { export: '書き出し', share: '作成', render: '作成' };
   $('#exportTitle').textContent = titles[kind];
@@ -706,13 +1139,14 @@ function openPicker(kind, presetIds) {
     const c = state.cuts.find((x) => x.id === cid);
     if (!c) continue;
     const row = document.createElement('label');
-    row.className = 'pick-row';
-    row.innerHTML = `<input type="checkbox" checked value="${c.id}" />
+    row.className = `pick-row${c.hidden ? ' off' : ''}`;
+    row.innerHTML = `<input type="checkbox" ${c.hidden ? '' : 'checked'} value="${c.id}" />
       ${c.thumbUrl ? `<img src="${c.thumbUrl}" alt="" />` : '<span></span>'}
       <span class="when">${c.localDate} ${fmtTime(c.takenAt, c.tzOffset)}</span>
-      <span class="memo">${escapeHtml(c.note || c.author || '')}</span>`;
+      <span class="memo">${escapeHtml(c.note || c.author || '')}${c.hidden ? '（非表示）' : ''}</span>`;
     list.appendChild(row);
   }
+  $('#pickCount').textContent = `${$$('#exportList input:checked').length} / ${ids.length} 件`;
   if (kind === 'render') {
     const withNote = ids.map((cid) => state.cuts.find((c) => c.id === cid)).find((c) => c && c.note);
     state.pvNoteSample = withNote ? withNote.note.slice(0, 20) : 'ひとこと';
@@ -769,7 +1203,7 @@ async function doRender(cutIds) {
   const style = collectStyle();
   const { jobId, style: saved } = await api(`/logs/${state.logId}/renders`, {
     method: 'POST',
-    body: JSON.stringify({ cutIds, style, label: state.dateFilter || 'まとめ' }),
+    body: JSON.stringify({ cutIds, style, label: state.day || 'まとめ' }),
   });
   if (saved) state.renderStyle = saved;
   toast('まとめ動画を作っています…');
@@ -796,9 +1230,29 @@ function closeDetailPane() {
   state.activeCutId = null;
   $('#detail').hidden = true;
   $('#detailEmpty').hidden = false;
-  $('#app').classList.remove('detail-open');
-  render();
+  $('#dayScreen').classList.remove('detail-open');
+  renderDayList();
   renderCrumbs();
+}
+
+// カットを直したり消したりしたあと、その日の中身を取り直して並べ直す
+async function reloadDay() {
+  await loadCuts();
+  if (!state.day) return;
+  const keepId = play.items[play.idx]?.cut.id;
+  state.dayCuts = state.cuts
+    .filter((c) => c.localDate === state.day)
+    .sort((a, b) => (a.takenAt < b.takenAt ? -1 : 1));
+  play.playing = false;
+  cancelAnimationFrame(play.raf);
+  await buildPlaylist(state.dayCuts);
+  renderScrub();
+  renderDayList();
+  if (!play.items.length) { stopPlayer(); $('#pvEmpty').hidden = false; paintProgress(); paintPlayBtn(); return; }
+  $('#pvEmpty').hidden = true;
+  const back = play.items.findIndex((it) => it.cut.id === keepId);
+  await showClip(back >= 0 ? back : 0, 0, false);
+  paintPlayBtn();
 }
 
 function openMove(cutIds, fromLogId, { single = false } = {}) {
@@ -1080,7 +1534,7 @@ function renderLogsList() {
       </span>
       <svg class="ic sm log-chev"><use href="#ic-next"/></svg>`;
     row.addEventListener('click', async () => {
-      state.logId = l.id; state.selected.clear(); state.dateFilter = null;
+      state.logId = l.id; state.selected.clear(); closeDay();
       await loadLog();
       showScreen('log');
     });
@@ -1157,9 +1611,6 @@ function closeAllDetail() {
 
 // ── 設定（ログ一覧と並ぶ画面） ──────────────────────────
 function openSettings() {
-  $('#defaultLog').innerHTML = state.logs
-    .map((l) => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('');
-  $('#defaultLog').value = state.defaultLogId || state.privateLogId || '';
   const r = state.reminder || {};
   $('#remMode').value = r.mode || 'off';
   $('#remTimes').value = r.times || '';
@@ -1232,33 +1683,80 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 // ── イベント ────────────────────────────────────────────
-$$('#app .seg').forEach((b) => b.addEventListener('click', () => { state.view = b.dataset.view; render(); }));
 $$('#allScreen .seg').forEach((b) => b.addEventListener('click', () => {
   state.allKind = b.dataset.kind || '';
   loadAllCuts();
 }));
 $('#allSearch').addEventListener('input', debounce(loadAllCuts, 350));
 $$('.tab-item').forEach((b) => b.addEventListener('click', () => selectTab(b.dataset.tab)));
-$('#selectMode').addEventListener('change', (e) => { state.selectMode = e.target.checked; render(); });
-$('#selectAll').addEventListener('click', () => { state.cuts.forEach((c) => state.selected.add(c.id)); render(); });
-$('#selectNone').addEventListener('click', () => { state.selected.clear(); render(); });
-$('#exportBtn').addEventListener('click', () => openPicker('export'));
-$('#shareBtn').addEventListener('click', () => openPicker('share'));
-$('#renderBtn').addEventListener('click', () => openPicker('render'));
-$('#moveBtn').addEventListener('click', () => {
-  const ids = [...state.selected];
-  if (!ids.length) { toast('カットが選ばれていません。「まとめて選択」をオンにしてから選んでください'); return; }
-  openMove(ids, state.logId);
+// その日の詳細：書き出し・共有・まとめ動画は、どれもモーダルで中身を選び直してもらう
+$('#dayExport').addEventListener('click', () => openPicker('export', dayIds()));
+$('#dayShare').addEventListener('click', () => openPicker('share', dayIds()));
+$('#dayRender').addEventListener('click', () => openPicker('render', dayIds()));
+$('#pickAll').addEventListener('click', () => setPicks(true));
+$('#pickNone').addEventListener('click', () => setPicks(false));
+$('#exportList').addEventListener('change', updatePickCount);
+$('#dayBack').addEventListener('click', () => { closeDay(); showScreen('log'); });
+$('#dayPrevDay').addEventListener('click', () => stepDay(-1));
+$('#dayNextDay').addEventListener('click', () => stepDay(1));
+
+// つないだ再生の操作
+$('#pvPlay').addEventListener('click', togglePlay);
+$('#pvTap').addEventListener('click', togglePlay);
+$('#pvPrevClip').addEventListener('click', prevClip);
+$('#pvNextClip').addEventListener('click', () => nextClip());
+$('#pvMute').addEventListener('click', () => {
+  play.muted = !play.muted;
+  $('#pvA').muted = play.muted; $('#pvB').muted = play.muted;
+  $('#pvMute').querySelector('use').setAttribute('href', play.muted ? '#ic-mute' : '#ic-sound');
+  $('#pvMute').setAttribute('aria-label', play.muted ? '音を出す' : '音を消す');
 });
+$('#pvFull').addEventListener('click', () => {
+  const st = $('#pvStage');
+  if (document.fullscreenElement) document.exitFullscreen();
+  else st.requestFullscreen?.().catch(() => toast('この端末では大きく表示できません'));
+});
+$('#pvScrub').addEventListener('pointerdown', (ev) => {
+  if (!play.total) return;
+  ev.preventDefault();
+  try { $('#pvScrub').setPointerCapture(ev.pointerId); } catch { /* 合成された指の動きでは掴めないことがある */ }
+  playFrom(scrubToEvent(ev));
+  const move = (e) => playFrom(scrubToEvent(e));
+  const up = () => {
+    $('#pvScrub').removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+  };
+  $('#pvScrub').addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up, { once: true });
+});
+$('#pvScrub').addEventListener('keydown', (ev) => {
+  if (!play.total) return;
+  const step = 5000;
+  if (ev.key === 'ArrowRight') { ev.preventDefault(); playFrom(currentGlobal() + step); }
+  if (ev.key === 'ArrowLeft') { ev.preventDefault(); playFrom(currentGlobal() - step); }
+  if (ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); togglePlay(); }
+});
+// 動画が終わったら次のクリップへ（つないで1本に見せるための要）
+for (const id of ['#pvA', '#pvB']) {
+  $(id).addEventListener('ended', () => { if (play.playing) nextClip(true); });
+}
 $('#renderOptions').addEventListener('input', () => { syncStyleFields(); updateStylePreview(); });
-$('#defaultLog').addEventListener('change', async () => {
-  const v = $('#defaultLog').value;
-  const res = await api('/me', {
-    method: 'PATCH',
-    body: JSON.stringify({ defaultLogId: v === state.privateLogId ? null : v }),
-  });
-  state.defaultLogId = res.defaultLogId;
-  toast('既定の記録先を保存しました');
+
+// このログの設定
+$('#logSettingsBtn').addEventListener('click', openLogSettings);
+$('#logSetBack').addEventListener('click', () => showScreen('log'));
+$('#logSetSave').addEventListener('click', saveLogSettings);
+$('#logSetTrash').addEventListener('click', showTrash);
+$('#logSetCopyInvite').addEventListener('click', () => {
+  navigator.clipboard?.writeText($('#logSetInvite').textContent);
+  toast('招待コードをコピーしました');
+});
+$('#logSetRotate').addEventListener('click', async () => {
+  if (!confirm('招待コードを作り直しますか。いまのコードでは入れなくなります。')) return;
+  const { inviteCode } = await api(`/logs/${state.logId}/invite/rotate`, { method: 'POST' });
+  $('#logSetInvite').textContent = inviteCode;
+  await loadLogs();
+  toast('作り直しました');
 });
 initStyleForm();
 $('#search').addEventListener('input', debounce(loadCuts, 350));

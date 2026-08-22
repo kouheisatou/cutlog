@@ -68,7 +68,7 @@ export const config = {
 
   media: {
     maxUploadMb: num(process.env.MAX_UPLOAD_MB, 200),
-    cutSecondsDefault: num(process.env.CUT_SECONDS_DEFAULT, 3),
+    cutSecondsDefault: num(process.env.CUT_SECONDS_DEFAULT, 2),
     retentionDays: num(process.env.MEDIA_RETENTION_DAYS, 0), // 0 なら消さない
   },
 

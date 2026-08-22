@@ -595,3 +595,99 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
   .detail { animation: rise .18s ease both; }
   @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 }
+
+/* ── つないだ再生 ─────────────────────────────────────
+   横の動画をそのまま出す。作り直しはしないので、
+   <video> を2枚重ね、切れ目で前後を入れ替えている。 */
+.player { padding: 0 var(--s4); }
+.stage {
+  position: relative; width: 100%; aspect-ratio: 16 / 9;
+  background: #000; overflow: hidden; display: grid; place-items: center;
+}
+.stage video, .stage img {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: contain; background: #000;
+}
+/* 前に出ている1枚だけ見せる（読み込み中のもう1枚は裏に置く） */
+.stage video { visibility: hidden; }
+.stage video.on { visibility: visible; }
+.stage img[hidden] { display: none; }
+.stage-tap { position: absolute; inset: 0; background: none; cursor: pointer; }
+.stage-empty {
+  position: relative; color: #8a8a90; font-size: 13px; letter-spacing: .08em; text-align: center; padding: var(--s4);
+}
+.stage-badge {
+  position: absolute; left: 0; right: 0; bottom: 0; pointer-events: none;
+  padding: var(--s5) var(--s2) var(--s1); color: #fff;
+  font-family: var(--mono); font-size: 11px; letter-spacing: .06em;
+  background: linear-gradient(to top, rgba(0,0,0,.6), transparent);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* 再生中は説明を薄くして、映像を邪魔しない */
+.player.playing .stage-badge { opacity: 0; transition: opacity .4s ease .8s; }
+.stage:hover .stage-badge { opacity: 1; transition: opacity .12s ease; }
+
+/* 通しの目盛り。クリップの区切りは細い隙間で示す（1本に見えつつ、境目も分かる） */
+.scrub {
+  position: relative; height: 22px; margin: 0; cursor: pointer;
+  display: flex; align-items: center; touch-action: none;
+}
+.scrub .segs { display: flex; gap: 2px; width: 100%; height: 4px; }
+.scrub .segs i { display: block; height: 100%; background: var(--hair); }
+.scrub .head {
+  position: absolute; top: 50%; left: 0; width: 2px; height: 14px;
+  background: var(--ink); transform: translate(-1px, -50%); pointer-events: none;
+}
+.scrub:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+.player .controls { display: flex; align-items: center; gap: var(--s1); }
+.player .controls .icon-btn { width: 38px; height: 38px; }
+.player .controls .tc { font-size: 11px; color: var(--mute); letter-spacing: .08em; }
+
+/* ── その日のクリップの並び ────────────────────────── */
+.day-bar {
+  display: flex; align-items: center; gap: var(--s2);
+  padding: var(--s2) var(--s4) var(--s1); flex-wrap: wrap;
+}
+.day-bar .tc { font-size: 11px; color: var(--mute); letter-spacing: .08em; }
+.day-list { overflow: auto; flex: 1; padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+.clip-row {
+  position: relative; display: grid;
+  grid-template-columns: 52px 56px minmax(0, 1fr) 38px 38px;
+  align-items: center; gap: var(--s2); padding: var(--s1) var(--s4);
+  border-left: 2px solid transparent;
+}
+.clip-row .clip-hit { position: absolute; inset: 0; background: none; }
+.clip-row .tc, .clip-row .thumb, .clip-row .meta { pointer-events: none; }
+.clip-row .clip-eye, .clip-row .clip-info { position: relative; z-index: 1; }
+.clip-row:hover { background: var(--paper-2); }
+.clip-row .tc { font-size: 12px; color: var(--mute); letter-spacing: .06em; }
+.clip-row .thumb { width: 56px; height: 34px; background: var(--paper-2); overflow: hidden; }
+.clip-row .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.clip-row .meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.clip-row .n { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clip-row .k { font-family: var(--mono); font-size: 10px; color: var(--mute); letter-spacing: .08em; }
+/* いま流れているクリップ */
+.clip-row.now { border-left-color: var(--ink); background: var(--paper-2); }
+.clip-row.now .tc { color: var(--ink); }
+/* 非表示にしたクリップ（消えてはいない。目のしるしで戻せる） */
+.clip-row.off .thumb img, .clip-row.off .meta { opacity: .38; }
+.clip-row.off .thumb { position: relative; }
+.pick-row.off .memo { color: var(--mute); }
+
+.pick-head { display: flex; align-items: center; gap: var(--s2); margin-bottom: var(--s1); }
+.pick-head .tc { font-family: var(--mono); font-size: 11px; color: var(--mute); letter-spacing: .08em; }
+
+/* カレンダーだけの画面なので、少し広く使う */
+.screen-body.wide { max-width: 860px; }
+
+/* ── このログの設定の中の並び ─────────────────────────── */
+.member-list, .trash-list { display: flex; flex-direction: column; }
+.member-row {
+  display: flex; align-items: center; gap: var(--s2);
+  padding: var(--s1) 0; border-bottom: 1px solid var(--hair); min-height: 44px;
+}
+.member-row .n { flex: 1; min-width: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#logSetInvite { font-size: 15px; letter-spacing: .18em; }
+#logSetSeconds { width: 72px; }
+#logSetName { min-width: 220px; }

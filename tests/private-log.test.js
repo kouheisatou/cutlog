@@ -111,7 +111,7 @@ test('GET /api/me は privateLogId・defaultLogId・renderStyle を返し、初�
   assert.equal(body.privateLogId, alicePrivate.id);
   assert.equal(body.defaultLogId, alicePrivate.id);
   assert.ok(body.renderStyle);
-  assert.equal(body.renderStyle.size, 'portrait');
+  assert.equal(body.renderStyle.size, 'landscape');
 });
 
 test('PATCH /api/me で defaultLogId を参加済みの別ログへ変えられる', async () => {
