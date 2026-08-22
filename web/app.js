@@ -15,7 +15,6 @@ const state = {
   day: null,             // いま開いている日（YYYY-MM-DD）
   dayCuts: [],
   calMonth: new Date(),
-  mode: 'video',
   // 下のタブ（camera は撮影を開くだけの動き。画面としては残らない）
   tab: 'logs',
   // 「ログ」タブの中でどこまで潜っているか（logs = 一覧、log = ログの中、settings = 設定）
@@ -1018,12 +1017,14 @@ async function startStream() {
   stopStream();
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: facing, width: { ideal: 1080 }, height: { ideal: 1920 } },
-      audio: state.mode === 'video',
+      // 横向きを主にするので、横長で要求する
+      video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: true,
     });
     $('#preview').srcObject = stream;
     $('#preview').hidden = false;
     $('#playback').hidden = true;
+    setupZoom();
   } catch (err) {
     toast(`カメラを使えませんでした。ブラウザのカメラの許可を確認してください（${err.message}）`, 5000);
   }
@@ -1032,6 +1033,87 @@ async function startStream() {
 function stopStream() {
   if (stream) stream.getTracks().forEach((t) => t.stop());
   stream = null;
+  zoom.track = null;
+}
+
+// ── ズーム ──────────────────────────────────────────────
+// カメラ自体が寄れる端末では、その仕組みを使う（画がぼけない）。
+// 使えない端末では、映像を拡大して見せる形にする。
+const zoom = { track: null, min: 1, max: 1, step: 0.1, value: 1, native: false };
+
+function setupZoom() {
+  const track = stream?.getVideoTracks?.()[0] || null;
+  zoom.track = track;
+  const caps = track?.getCapabilities?.() || {};
+  if (caps.zoom && caps.zoom.max > caps.zoom.min) {
+    zoom.native = true;
+    zoom.min = caps.zoom.min;
+    zoom.max = caps.zoom.max;
+    zoom.step = caps.zoom.step || (zoom.max - zoom.min) / 20 || 0.1;
+    zoom.value = track.getSettings?.().zoom ?? zoom.min;
+  } else {
+    // 端末が寄れないときは、映した後の絵を切り出して寄せる
+    zoom.native = false;
+    zoom.min = 1;
+    zoom.max = 4;
+    zoom.step = 0.1;
+    zoom.value = 1;
+  }
+  const sl = $('#zoomRange');
+  sl.min = String(zoom.min);
+  sl.max = String(zoom.max);
+  sl.step = String(zoom.step);
+  sl.value = String(zoom.value);
+  paintZoom();
+  renderZoomStops();
+}
+
+function renderZoomStops() {
+  // よく使う倍率をすぐ押せるようにする（端末が出せる範囲に収まるものだけ）
+  const box = $('#zoomStops');
+  box.innerHTML = '';
+  const wants = zoom.native ? [zoom.min, zoom.min * 2, zoom.min * 3, zoom.max] : [1, 2, 3, 4];
+  const seen = new Set();
+  for (const w of wants) {
+    const v = Math.min(zoom.max, Math.max(zoom.min, w));
+    const key = v.toFixed(1);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip zoom-stop';
+    b.dataset.zoom = String(v);
+    b.textContent = `${zoomLabel(v)}×`;
+    b.addEventListener('click', () => applyZoom(v));
+    box.appendChild(b);
+  }
+  paintZoom();
+}
+
+// 端末が寄れる範囲は 1 から始まらないことがあるので、いちばん引いた状態を1.0として見せる
+const zoomLabel = (v) => (Math.round((v / zoom.min) * 10) / 10).toFixed(1).replace(/\.0$/, '');
+
+async function applyZoom(v) {
+  const next = Math.min(zoom.max, Math.max(zoom.min, Number(v) || zoom.min));
+  zoom.value = next;
+  $('#zoomRange').value = String(next);
+  if (zoom.native && zoom.track) {
+    try {
+      await zoom.track.applyConstraints({ advanced: [{ zoom: next }] });
+    } catch { /* 受け付けない端末では、映像側で寄せる */ }
+  }
+  paintZoom();
+}
+
+function paintZoom() {
+  const v = zoom.value;
+  $('#zoomNow').textContent = `${zoomLabel(v)}×`;
+  // 端末が寄れないときだけ、映像そのものを拡大する
+  $('#preview').style.transform = zoom.native ? '' : `scale(${v})`;
+  $$('.zoom-stop').forEach((b) => {
+    b.classList.toggle('active', Math.abs(Number(b.dataset.zoom) - v) < (zoom.step || 0.1) / 2);
+  });
+  $('#zoomWrap').hidden = zoom.max <= zoom.min;
 }
 
 function closeCapture() {
@@ -1043,19 +1125,9 @@ function closeCapture() {
   $('#captureDialog').close();
 }
 
+// 撮るのは動画だけ。決めた秒数で自動的に止まる。
 async function shoot() {
   if (!stream) return;
-  if (state.mode === 'photo') {
-    const video = $('#preview');
-    const canvas = $('#snapCanvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
-    const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.92));
-    pending = { blob, kind: 'photo', durationMs: null, mime: 'image/jpeg' };
-    showReview(URL.createObjectURL(blob), 'photo');
-    return;
-  }
   const seconds = state.log?.cut_seconds || 2;
   const mime = ['video/mp4;codecs=h264,aac', 'video/webm;codecs=vp9,opus', 'video/webm']
     .find((m) => MediaRecorder.isTypeSupported(m)) || '';
@@ -1774,22 +1846,26 @@ $('#retakeBtn').addEventListener('click', async () => {
   pending = null; $('#reviewBar').hidden = true; await startStream();
 });
 $('#saveCutBtn').addEventListener('click', saveCut);
-$$('.mode-toggle .chip').forEach((b) => b.addEventListener('click', async () => {
-  state.mode = b.dataset.mode;
-  $$('.mode-toggle .chip').forEach((x) => x.classList.toggle('active', x === b));
-  await startStream();
-}));
+$('#zoomRange').addEventListener('input', (e) => applyZoom(e.target.value));
+// 二本指でつまむと寄る・引く
+let pinch0 = 0; let pinchZoom0 = 1;
+$('#preview').addEventListener('touchstart', (ev) => {
+  if (ev.touches.length !== 2) return;
+  pinch0 = Math.hypot(ev.touches[0].clientX - ev.touches[1].clientX, ev.touches[0].clientY - ev.touches[1].clientY);
+  pinchZoom0 = zoom.value;
+}, { passive: true });
+$('#preview').addEventListener('touchmove', (ev) => {
+  if (ev.touches.length !== 2 || !pinch0) return;
+  const d = Math.hypot(ev.touches[0].clientX - ev.touches[1].clientX, ev.touches[0].clientY - ev.touches[1].clientY);
+  applyZoom(pinchZoom0 * (d / pinch0));
+}, { passive: true });
+$('#preview').addEventListener('touchend', () => { pinch0 = 0; }, { passive: true });
 $('#fileInput').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
-  pending = {
-    blob: file,
-    kind: file.type.startsWith('image/') ? 'photo' : 'video',
-    durationMs: null,
-    mime: file.type,
-    source: 'upload',
-  };
-  showReview(URL.createObjectURL(file), pending.kind);
+  if (!file.type.startsWith('video/')) { toast('動画を選んでください'); e.target.value = ''; return; }
+  pending = { blob: file, kind: 'video', durationMs: null, mime: file.type, source: 'upload' };
+  showReview(URL.createObjectURL(file), 'video');
 });
 $('#settingsBtn').addEventListener('click', openSettings);
 $('#settingsBack').addEventListener('click', openLogs);

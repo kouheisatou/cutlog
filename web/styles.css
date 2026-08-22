@@ -35,6 +35,26 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 
+/* ── アプリらしい手ざわり ───────────────────────────────
+   文字は掴めないようにして、押した所が青く光らないようにする。
+   書く場所（入力欄）だけは、これまでどおり選べる。 */
+* {
+  -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+input, textarea, select, [contenteditable], .selectable, .kv td, code {
+  -webkit-user-select: text; user-select: text;
+}
+button, .tab-item, .seg, .chip, .mini, .btn, .log-row, .clip-row, .cal-day, .photo-cell, .crumb {
+  touch-action: manipulation;   /* 二度押しで拡大するときの待ちを無くす */
+}
+/* 指で流すときに、勢いを残して滑らかに止める */
+.screen-body, .list-body, .day-list, .detail-pane, .pick-list, .move-list, .share-list {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+}
+
 html, body { height: 100%; margin: 0; }
 body {
   background: var(--paper); color: var(--ink);
@@ -591,9 +611,17 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .cut-row, .btn, .mini, .reaction, .seg { transition: background-color .14s ease, color .14s ease, opacity .14s ease; }
+  .btn, .mini, .reaction, .seg, .log-row, .clip-row, .tab-item, .icon-btn, .chip, .photo-cell, .cal-day {
+    transition: background-color .14s ease, color .14s ease, opacity .14s ease, transform .10s ease;
+  }
   .detail { animation: rise .18s ease both; }
   @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  /* 画面が変わったことが分かる程度に、そっと出す */
+  .app:not([hidden]) > .screen-body, .app:not([hidden]) > .body { animation: fade .16s ease both; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  /* 押した瞬間に、わずかに沈む */
+  .btn:active, .mini:active, .chip:active, .tab-item:active, .icon-btn:active { transform: scale(.97); }
+  .log-row:active, .clip-row:active, .photo-cell:active, .cal-day:active { transform: scale(.995); }
 }
 
 /* ── つないだ再生 ─────────────────────────────────────
@@ -691,3 +719,26 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
 #logSetInvite { font-size: 15px; letter-spacing: .18em; }
 #logSetSeconds { width: 72px; }
 #logSetName { min-width: 220px; }
+
+/* ── 撮影のズーム ───────────────────────────────────── */
+.zoom-wrap {
+  position: absolute; left: 0; right: 0; bottom: 128px;
+  display: flex; flex-direction: column; align-items: center; gap: var(--s1);
+  pointer-events: none;
+}
+.zoom-stops, .zoom-slider { display: flex; align-items: center; gap: var(--s1); pointer-events: auto; }
+.zoom-stop {
+  min-width: 44px; min-height: 32px; display: grid; place-items: center;
+  background: rgba(0,0,0,.45); color: #fff; border-radius: 999px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: .04em;
+}
+.zoom-stop.active { background: #fff; color: #111; }
+.zoom-slider input[type=range] { width: min(58vw, 300px); accent-color: #fff; }
+#zoomNow {
+  background: rgba(0,0,0,.45); color: #fff; border-radius: 999px;
+  min-width: 46px; text-align: center; font-family: var(--mono); font-size: 11px;
+}
+.chip.ghost { opacity: .55; }
+/* 端末が寄れないときは映像を拡大するので、はみ出しを隠す */
+.capture video#preview { transform-origin: center center; }
+.capture { overflow: hidden; }
