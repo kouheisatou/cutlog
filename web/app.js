@@ -19,6 +19,7 @@ const state = {
   logsStack: 'logs',
   // 全カット（ログをまたいだ一覧）
   allCuts: [],
+  allAuthors: [],       // 検索でえらべる、上げた人の顔ぶれ
   mapPick: [],          // マップで押した場所に重なっていたカット
   commentCut: null,     // コメントを開いているクリップ
   detailCut: null,      // モーダルで開いているカット
@@ -576,12 +577,80 @@ function wireModals() {
       if (ev.target === dlg && dlg.dataset.downOutside === 'true') closeModal(dlg);
     });
     $$('[data-close]', dlg).forEach((b) => b.addEventListener('click', () => closeModal(dlg)));
+    if (dlg.id !== 'captureDialog') wireSheetDrag(dlg);
+    // 開いたら、次の間に「せり上がった状態」へ切り替える。
+    // 開いたこと自体を見張るので、どこから開かれても同じように動く。
+    new MutationObserver(() => {
+      if (dlg.open) { setTimeout(() => dlg.classList.add('in'), 0); settleSheet(dlg); }
+      else {
+        dlg.classList.remove('in');
+        // 次に開くときのために、押さえていた指定を戻す
+        const p2 = dlg.querySelector('.panel');
+        if (p2) { p2.style.transition = ''; p2.style.transform = ''; }
+      }
+    }).observe(dlg, { attributes: true, attributeFilter: ['open'] });
   });
 }
 
+// せり上がりが走らない場（動きを止めている端末や、裏に回った画面）でも、
+// 開いたシートが画面の外に取り残されないようにする。少し経っても出て来ていなければ、
+// 動きを切って、その場で所定の位置へ置く。
+function settleSheet(dlg) {
+  const panel = dlg.querySelector('.panel');
+  if (!panel) return;
+  setTimeout(() => {
+    if (!dlg.open) return;
+    const r = panel.getBoundingClientRect();
+    const shown = window.innerHeight - r.top;
+    if (shown > r.height * 0.6) return;   // ちゃんと出ている
+    // ここで動きを切ったままにする。戻すと、止まっていた動きが元の位置へ引き戻すことがある。
+    // 閉じるときに指定を消すので、次に開くときはまたせり上がる。
+    panel.style.transition = 'none';
+    panel.style.transform = 'none';
+  }, 420);
+}
+
+// シートを下へ払うと閉じる。中身を上下に読んでいる途中は掴まない
+// （いちばん上まで戻っているときだけ、指の動きをシートの移動として受け取る）。
+function wireSheetDrag(dlg) {
+  const panel = dlg.querySelector('.panel');
+  if (!panel) return;
+  let from = null;
+  panel.addEventListener('pointerdown', (ev) => {
+    if (ev.target.closest('input, textarea, select, button, a, video, .scrub, .map-host')) return;
+    if (panel.scrollTop > 0) return;
+    from = { y: ev.clientY, id: ev.pointerId };
+  });
+  panel.addEventListener('pointermove', (ev) => {
+    if (!from) return;
+    const dy = ev.clientY - from.y;
+    if (dy <= 0) { panel.style.transform = ''; return; }
+    panel.style.transition = 'none';
+    panel.style.transform = `translateY(${dy}px)`;
+  });
+  const end = (ev) => {
+    if (!from) return;
+    const dy = (ev.clientY ?? from.y) - from.y;
+    from = null;
+    panel.style.transition = '';
+    panel.style.transform = '';
+    if (dy > 110) closeModal(dlg);
+  };
+  panel.addEventListener('pointerup', end);
+  panel.addEventListener('pointercancel', end);
+}
+
+// 閉じるときは、下へ沈んでから消す
 function closeModal(dlg) {
   if (dlg.id === 'captureDialog') { closeCapture(); return; }
-  dlg.close();
+  const panel = dlg.querySelector('.panel');
+  const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (!panel || reduce) { dlg.close(); return; }
+  dlg.classList.remove('in');
+  let closed = false;
+  const done = () => { if (closed) return; closed = true; dlg.close(); };
+  panel.addEventListener('transitionend', done, { once: true });
+  setTimeout(done, 300);   // 動きが起きなかったときの逃げ道
 }
 
 // どの閉じ方（ばつ・外側・Esc）でも後始末が走るよう、閉じたことそのものを見る
@@ -2038,17 +2107,39 @@ async function loadAllCuts() {
   const params = new URLSearchParams();
   const q = $('#allSearch').value.trim();
   if (q) params.set('q', q);
+  const author = $('#allAuthor').value;
+  if (author) params.set('author', author);
   params.set('limit', '300');
   const { cuts } = await api(`/cuts?${params}`);
   state.allCuts = cuts;
+  // 絞っていないときの顔ぶれを覚えておく（絞ったあとも選び直せるように）
+  if (!q && !author) {
+    state.allAuthors = [...new Map(cuts.map((c) => [c.userId, c.author])).entries()]
+      .map(([id, name]) => ({ id, name: name || id }));
+  }
   renderAll();
 }
 
 // いま何で絞っているかを、一覧の上に出す
+// いま何で絞っているかを、一覧の上に出す
+function fillAuthorOptions() {
+  const sel = $('#allAuthor');
+  const keep = sel.value;
+  sel.innerHTML = '<option value="">全員</option>'
+    + state.allAuthors.map((a) => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
+  sel.value = keep;
+}
+
 function paintAllFilter() {
   const q = $('#allSearch').value.trim();
-  $('#allFilterBar').hidden = !q;
-  $('#allFilterText').textContent = q ? `「${q}」で絞りこみ中` : '';
+  const authorId = $('#allAuthor').value;
+  const authorName = state.allAuthors.find((a) => a.id === authorId)?.name || '';
+  const bits = [
+    q ? `メモ「${q}」` : '',
+    authorName ? `${authorName} のぶん` : '',
+  ].filter(Boolean);
+  $('#allFilterBar').hidden = !bits.length;
+  $('#allFilterText').textContent = bits.length ? `${bits.join('　')}　で絞りこみ中` : '';
 }
 
 function renderAll() {
@@ -2057,7 +2148,7 @@ function renderAll() {
   body.innerHTML = '';
   const shown = state.allCuts;
   if (!shown.length) {
-    body.innerHTML = `<div class="empty">${$('#allSearch').value.trim()
+    body.innerHTML = `<div class="empty">${$('#allSearch').value.trim() || $('#allAuthor').value
       ? '条件に合うカットはありません。' : 'まだカットがありません。カメラのタブから撮ってみてください。'}</div>`;
     return;
   }
@@ -2343,20 +2434,19 @@ $('#avatarClear').addEventListener('click', async () => {
   toast('顔の絵を外しました');
 });
 $('#allSearchBtn').addEventListener('click', () => {
-  $('#searchHint').textContent = state.allCuts.length
-    ? `いま ${state.allCuts.length} 件を出しています。`
-    : '';
+  fillAuthorOptions();
   $('#searchDialog').showModal();
   $('#allSearch').focus();
 });
 $('#searchGo').addEventListener('click', async () => {
-  $('#searchDialog').close();
+  closeModal($('#searchDialog'));
   await loadAllCuts();
   paintAllFilter();
 });
 $('#searchClear').addEventListener('click', async () => {
   $('#allSearch').value = '';
-  $('#searchDialog').close();
+  $('#allAuthor').value = '';
+  closeModal($('#searchDialog'));
   await loadAllCuts();
   paintAllFilter();
 });

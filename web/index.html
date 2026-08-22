@@ -8,7 +8,7 @@
 <title>cutlog</title>
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="/styles.css?v=0.12.3" />
+<link rel="stylesheet" href="/styles.css?v=0.13.5" />
 </head>
 <body>
 <svg class="sprite" aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute">
@@ -546,19 +546,21 @@
 <dialog id="searchDialog" class="sheet">
   <div class="panel">
     <button type="button" class="panel-close icon-btn" data-close aria-label="閉じる"><svg class="ic"><use href="#ic-close"/></svg></button>
-    <h2>メモを検索</h2>
+    <h2>検索</h2>
     <div class="panel-row">
-      <input id="allSearch" type="search" placeholder="ことばを入れる" autocomplete="off" />
+      <label>メモ<input id="allSearch" type="search" placeholder="メモのワードを入力してください" autocomplete="off" /></label>
     </div>
-    <div id="searchHint" class="muted small"></div>
+    <div class="panel-row">
+      <label>アップロードした人<select id="allAuthor"><option value="">全員</option></select></label>
+    </div>
     <div class="panel-actions">
-      <button id="searchClear" class="btn">条件をなくす</button>
-      <button id="searchGo" class="btn primary">この条件で見る</button>
+      <button id="searchClear" class="btn">絞り込みをリセット</button>
+      <button id="searchGo" class="btn primary">検索</button>
     </div>
   </div>
 </dialog>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-<script type="module" src="/app.js?v=0.12.3"></script>
+<script type="module" src="/app.js?v=0.13.5"></script>
 </body>
 </html>

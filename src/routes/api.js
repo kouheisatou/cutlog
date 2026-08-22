@@ -460,7 +460,7 @@ api.get('/logs/:logId/cuts', requireAuth, requireMember, asyncRoute(async (req, 
 // 「全カット」の画面（写真アプリのような並び）が使う。
 // ログをまたぐので requireMember は使えない。memberships と内側で突き合わせて絞る。
 api.get('/cuts', requireAuth, asyncRoute(async (req, res) => {
-  const { date, q, kind, before } = req.query;
+  const { date, q, kind, before, author } = req.query;
   const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 200));
   let sql = `SELECT c.*, u.display_name, l.name AS log_name, l.kind AS log_kind
                FROM cuts c
@@ -471,6 +471,7 @@ api.get('/cuts', requireAuth, asyncRoute(async (req, res) => {
   const args = [req.user.id];
   if (date) { sql += ' AND c.local_date = ?'; args.push(date); }
   if (kind === 'photo' || kind === 'video') { sql += ' AND c.kind = ?'; args.push(kind); }
+  if (author) { sql += ' AND c.user_id = ?'; args.push(author); }
   if (q) { sql += ' AND c.note LIKE ?'; args.push(`%${q}%`); }
   // 続きを読むための目印。同じ時刻が並んだときに取りこぼさないよう、idも見る。
   if (before) { sql += ' AND (c.taken_at < ? OR (c.taken_at = ? AND c.id < ?))'; args.push(before, before, req.query.beforeId || ''); }
