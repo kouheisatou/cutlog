@@ -6,3 +6,6 @@ data/
 coverage/
 dev-log/
 .deploy/
+# サーバごとの上書き（ポートの開き方など）
+docker-compose.override.yml
+.env.bak
