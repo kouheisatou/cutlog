@@ -6,6 +6,20 @@ import { api, pushToUser } from './routes/api.js';
 import { startWorker } from './jobs/queue.js';
 import './jobs/render.js';
 
+// 地図の絵の配信元。MAP_TILE_URL が指す先だけを、画像の取得先として足す。
+// 設定していなければ何も足さない（外へは出ない）。
+const mapImgSrc = (() => {
+  const u = config.map?.tileUrl;
+  if (!u) return '';
+  try {
+    const { protocol, host } = new URL(u.replace('{z}', '0').replace('{x}', '0').replace('{y}', '0'));
+    return ` ${protocol}//${host}`;
+  } catch {
+    console.warn('[csp] MAP_TILE_URL を住所として読めませんでした:', u);
+    return '';
+  }
+})();
+
 const app = express();
 if (config.trustProxy) app.set('trust proxy', 1);
 app.disable('x-powered-by');
@@ -17,9 +31,10 @@ app.use((req, res, next) => {
   res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()');
   // 画面は自分のオリジンのファイルだけで動く。外部へは何も取りに行かないし、送らない。
   // media（利用者が上げたファイル）は routes/api.js の側でさらに強く縛っている。
+  // ただし地図の絵だけは、設定したその配信元に限って取りに行けるようにする。
   res.setHeader('Content-Security-Policy', [
     "default-src 'self'",
-    "img-src 'self' blob: data:",
+    `img-src 'self' blob: data:${mapImgSrc}`,
     "media-src 'self' blob:",
     "script-src 'self'",
     "style-src 'self'",

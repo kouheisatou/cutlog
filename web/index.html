@@ -8,7 +8,7 @@
 <title>cutlog</title>
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="/styles.css?v=0.9.5" />
+<link rel="stylesheet" href="/styles.css?v=0.9.9" />
 </head>
 <body>
 <svg class="sprite" aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute">
@@ -195,6 +195,7 @@
   <header class="topbar">
     <nav id="allCrumbs" class="crumbs" aria-label="いまいる場所"></nav>
     <div class="spacer"></div>
+    <button id="allSearchBtn" class="icon-btn" aria-label="メモを検索"><svg class="ic"><use href="#ic-search"/></svg></button>
     <label class="icon-btn" id="allAddBtn" title="端末の動画から取り込む">
       <svg class="ic"><use href="#ic-plus"/></svg>
       <span class="sr">端末の動画から取り込む</span>
@@ -203,8 +204,9 @@
   </header>
   <main class="body">
     <aside id="allPane" class="list-pane">
-      <div class="list-toolbar">
-        <input id="allSearch" type="search" placeholder="メモを検索" />
+      <div id="allFilterBar" class="filter-bar" hidden>
+        <span class="tc" id="allFilterText"></span>
+        <button id="allFilterClear" class="mini">やめる</button>
       </div>
       <div id="allBody" class="list-body"></div>
     </aside>
@@ -432,8 +434,6 @@
     <nav id="mapCrumbs" class="crumbs" aria-label="いまいる場所"></nav>
     <div class="spacer"></div>
     <span id="mapCount" class="muted crumb-meta"></span>
-    <button id="mapZoomOut" class="icon-btn" aria-label="広く見る">−</button>
-    <button id="mapZoomIn" class="icon-btn" aria-label="寄って見る">＋</button>
   </header>
   <main class="body">
     <aside class="list-pane">
@@ -512,7 +512,7 @@
     <svg class="ic"><use href="#ic-list"/></svg><span>ログ</span>
   </button>
   <button class="tab-item" data-tab="all" type="button">
-    <svg class="ic"><use href="#ic-grid"/></svg><span>全カット</span>
+    <svg class="ic"><use href="#ic-grid"/></svg><span>カット一覧</span>
   </button>
   <button class="tab-item" data-tab="map" type="button">
     <svg class="ic"><use href="#ic-pin"/></svg><span>マップ</span>
@@ -522,7 +522,23 @@
   </button>
 </nav>
 
+<!-- 検索（カット一覧から開く） -->
+<dialog id="searchDialog" class="sheet">
+  <div class="panel">
+    <button type="button" class="panel-close icon-btn" data-close aria-label="閉じる"><svg class="ic"><use href="#ic-close"/></svg></button>
+    <h2>メモを検索</h2>
+    <div class="panel-row">
+      <input id="allSearch" type="search" placeholder="ことばを入れる" autocomplete="off" />
+    </div>
+    <div id="searchHint" class="muted small"></div>
+    <div class="panel-actions">
+      <button id="searchClear" class="btn">条件をなくす</button>
+      <button id="searchGo" class="btn primary">この条件で見る</button>
+    </div>
+  </div>
+</dialog>
+
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-<script type="module" src="/app.js?v=0.9.5"></script>
+<script type="module" src="/app.js?v=0.9.9"></script>
 </body>
 </html>

@@ -176,7 +176,7 @@ const swipe = { x: 0, y: 0, t: 0, live: false };
 
 function swipeStartOk(target) {
   if (document.querySelector('dialog[open]')) return false;
-  return !target.closest('.scrub, .stage, input[type=range], video, .detail-pane, .pick-list');
+  return !target.closest('.scrub, .stage, input[type=range], video, .detail-pane, .pick-list, .map-host');
 }
 
 document.addEventListener('touchstart', (ev) => {
@@ -229,15 +229,20 @@ function setCrumbs(el, items) {
   el.appendChild(ol);
 }
 
-function activeCutLabel(cut) {
+// 終点は、そのカットが何かが分かる言い方にする。
+// メモがあればメモ。無ければ日付と時刻で表す。
+function activeCutLabel(cut, { withDate = true } = {}) {
   if (!cut) return null;
-  return `${cut.localDate.replace(/-/g, '.')} ${fmtTime(cut.takenAt, cut.tzOffset)}`;
+  if (cut.note) return cut.note;
+  const t = fmtTime(cut.takenAt, cut.tzOffset);
+  return withDate ? `${cut.localDate.replace(/-/g, '.')} ${t}` : t;
 }
 
 function renderCrumbs() {
   const toLogs = () => { openLogs(); };
-  setCrumbs($('#logsCrumbs'), [{ label: 'ログ' }]);
-  setCrumbs($('#settingsCrumbs'), [{ label: '設定' }]);
+  setCrumbs($('#logsCrumbs'), []);
+  setCrumbs($('#mapCrumbs'), []);
+  setCrumbs($('#settingsCrumbs'), []);
 
   setCrumbs($('#logCrumbs'), [{ label: 'ログ', go: toLogs }, { label: state.log ? state.log.name : '—' }]);
   setCrumbs($('#logSetCrumbs'), [
@@ -256,17 +261,14 @@ function renderCrumbs() {
   const openCut = state.dayCuts.find((c) => c.id === state.activeCutId);
   if ($('#dayScreen').classList.contains('detail-open') && openCut) {
     dayItems[2] = { label: state.day ? state.day.replace(/-/g, '.') : '—', go: () => closeDetailPane() };
-    dayItems.push({ label: activeCutLabel(openCut) });
+    dayItems.push({ label: activeCutLabel(openCut, { withDate: false }) });
   }
   setCrumbs($('#dayCrumbs'), dayItems);
 
-  setCrumbs($('#mapCrumbs'), [{ label: 'マップ' }]);
-  const allItems = [{ label: '全カット' }];
   const openAll = state.allCuts.find((c) => c.id === state.activeAllCutId);
-  if ($('#allScreen').classList.contains('detail-open') && openAll) {
-    allItems[0] = { label: '全カット', go: () => closeAllDetail() };
-    allItems.push({ label: openAll.logName || '—' }, { label: activeCutLabel(openAll) });
-  }
+  const allItems = ($('#allScreen').classList.contains('detail-open') && openAll)
+    ? [{ label: 'カット一覧', go: () => closeAllDetail() }, { label: activeCutLabel(openAll) }]
+    : [];
   setCrumbs($('#allCrumbs'), allItems);
 }
 
@@ -480,7 +482,6 @@ async function openDetail(cutId, ctxName = 'day') {
     ? `<img class="detail-media" src="${cut.url}" alt="" />`
     : `<video class="detail-media" src="${cut.url}" controls playsinline></video>`;
   el.innerHTML = `
-    <button class="btn" id="backToList"><svg class="ic sm"><use href="#ic-back"/></svg>一覧へ戻る</button>
     ${media}
     <div class="detail-head">
       <div>
@@ -538,12 +539,7 @@ async function openDetail(cutId, ctxName = 'day') {
   ctx.rerender();
   renderCrumbs();
 
-  // 2つの詳細（ログの中・全カット）が同じidを持つので、必ずこの画面の中だけを探す。
-  $('#backToList', el).addEventListener('click', () => {
-    if (ctxName === 'all') closeAllDetail();
-    else if (ctxName === 'map') closeMapDetail();
-    else closeDetailPane();
-  });
+  // 3つの詳細（ログの中・カット一覧・マップ）が同じidを持つので、必ずこの画面の中だけを探す。
   $('#dlBtn', el).addEventListener('click', () => { window.location.href = `${cut.url}?download=1`; });
   $('#metaBtn', el).addEventListener('click', () => {
     const box = $('#metaBox', el);
@@ -642,6 +638,28 @@ async function loadMapCuts() {
   }
 }
 
+// ピンは、近いものをまとめて1つにする（写真のアプリの地図と同じ考え方）。
+// 縮めるとまとまり、広げると分かれる。まとまりを押すと、そこへ寄る。
+const CLUSTER_PX = 68;
+
+function clusterPins(pts, w, h) {
+  const cells = new Map();
+  for (const p of pts) {
+    if (p.px < -60 || p.py < -60 || p.px > w + 60 || p.py > h + 60) continue;
+    const key = `${Math.floor(p.px / CLUSTER_PX)},${Math.floor(p.py / CLUSTER_PX)}`;
+    if (!cells.has(key)) cells.set(key, []);
+    cells.get(key).push(p);
+  }
+  return [...cells.values()].map((group) => {
+    // まとまりの位置は、中に入っているものの平均にする（格子の目が見えないように）
+    const px = group.reduce((a, g) => a + g.px, 0) / group.length;
+    const py = group.reduce((a, g) => a + g.py, 0) / group.length;
+    // 見本は、いちばん新しいカットのものを使う
+    const head = group.reduce((a, g) => (a.cut.takenAt > g.cut.takenAt ? a : g));
+    return { px, py, group, head };
+  });
+}
+
 function drawMap() {
   const host = $('#mapHost');
   const w = host.clientWidth || 640;
@@ -667,7 +685,6 @@ function drawMap() {
         if (y < 0 || y >= n) continue;
         const img = document.createElement('img');
         img.className = 'tile';
-        img.loading = 'lazy';
         img.alt = '';
         img.src = map.tileUrl
           .replace('{z}', map.z).replace('{x}', ((x % n) + n) % n).replace('{y}', y);
@@ -678,20 +695,60 @@ function drawMap() {
     }
   }
 
-  for (const c of map.cuts) {
-    const px = lon2x(c.lon, map.z) * TILE - left;
-    const py = lat2y(c.lat, map.z) * TILE - top;
-    if (px < -40 || py < -40 || px > w + 40 || py > h + 40) continue;
+  const pts = map.cuts.map((c) => ({
+    cut: c,
+    px: lon2x(c.lon, map.z) * TILE - left,
+    py: lat2y(c.lat, map.z) * TILE - top,
+  }));
+
+  for (const cl of clusterPins(pts, w, h)) {
+    const one = cl.group.length === 1;
     const pin = document.createElement('button');
     pin.type = 'button';
-    pin.className = 'map-pin';
-    pin.style.left = `${px}px`;
-    pin.style.top = `${py}px`;
-    pin.setAttribute('aria-label', `${c.localDate} ${fmtTime(c.takenAt, c.tzOffset)} のカット`);
-    pin.innerHTML = c.thumbUrl ? `<img src="${c.thumbUrl}" alt="" />` : '<span></span>';
-    pin.addEventListener('click', () => openDetail(c.id, 'map'));
+    pin.className = `map-pin${one ? '' : ' many'}`;
+    pin.style.left = `${cl.px}px`;
+    pin.style.top = `${cl.py}px`;
+    const c = cl.head.cut;
+    pin.setAttribute('aria-label', one
+      ? `${c.localDate} ${fmtTime(c.takenAt, c.tzOffset)} のカット`
+      : `このあたりの${cl.group.length}件`);
+    pin.innerHTML = (c.thumbUrl ? `<img src="${c.thumbUrl}" alt="" />` : '<span></span>')
+      + (one ? '' : `<span class="n">${cl.group.length}</span>`);
+    pin.addEventListener('click', () => {
+      if (one) { openDetail(c.id, 'map'); return; }
+      // まとまりを押したら、そこを真ん中にして寄る（分かれていく）
+      map.cx += (cl.px - w / 2) / TILE;
+      map.cy += (cl.py - h / 2) / TILE;
+      mapZoom(2);
+    });
     pins.appendChild(pin);
   }
+}
+
+// 指や矢印で地図を動かす
+function wireMapDrag() {
+  const host = $('#mapHost');
+  let from = null;
+  host.addEventListener('pointerdown', (ev) => {
+    if (ev.target.closest('.map-pin')) return;
+    from = { x: ev.clientX, y: ev.clientY, cx: map.cx, cy: map.cy };
+    host.classList.add('grabbing');
+    try { host.setPointerCapture(ev.pointerId); } catch { /* 掴めない指もある */ }
+  });
+  host.addEventListener('pointermove', (ev) => {
+    if (!from) return;
+    map.cx = from.cx - (ev.clientX - from.x) / TILE;
+    map.cy = from.cy - (ev.clientY - from.y) / TILE;
+    drawMap();
+  });
+  const done = () => { from = null; host.classList.remove('grabbing'); };
+  host.addEventListener('pointerup', done);
+  host.addEventListener('pointercancel', done);
+  // ホイールでも寄る・引く
+  host.addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    mapZoom(ev.deltaY < 0 ? 1 : -1);
+  }, { passive: false });
 }
 
 function mapZoom(d) {
@@ -1905,7 +1962,15 @@ async function loadAllCuts() {
   renderAll();
 }
 
+// いま何で絞っているかを、一覧の上に出す
+function paintAllFilter() {
+  const q = $('#allSearch').value.trim();
+  $('#allFilterBar').hidden = !q;
+  $('#allFilterText').textContent = q ? `「${q}」で絞りこみ中` : '';
+}
+
 function renderAll() {
+  paintAllFilter();
   const body = $('#allBody');
   body.innerHTML = '';
   if (!state.allCuts.length) {
@@ -2023,7 +2088,6 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 // ── イベント ────────────────────────────────────────────
-$('#allSearch').addEventListener('input', debounce(loadAllCuts, 350));
 // 端末の動画から取り込む（何本でも。行き先は既定の記録先）
 $('#allAddInput').addEventListener('change', async (ev) => {
   const files = [...(ev.target.files || [])].filter((f) => f.type.startsWith('video/'));
@@ -2163,6 +2227,7 @@ $('#fileInput').addEventListener('change', async (e) => {
   showReview(URL.createObjectURL(file), 'video');
 });
 wireModals();
+wireMapDrag();
 $('#advToggle').addEventListener('click', () => {
   const box = $('#advBox');
   const open = box.hidden;
@@ -2170,8 +2235,29 @@ $('#advToggle').addEventListener('click', () => {
   $('#advToggle').setAttribute('aria-expanded', String(open));
   $('#advToggle').textContent = open ? '詳しい設定を隠す' : '詳しい設定を出す';
 });
-$('#mapZoomIn').addEventListener('click', () => mapZoom(1));
-$('#mapZoomOut').addEventListener('click', () => mapZoom(-1));
+// カット一覧の検索は、虫めがねから開くモーダルで行う
+$('#allSearchBtn').addEventListener('click', () => {
+  $('#searchHint').textContent = state.allCuts.length
+    ? `いま ${state.allCuts.length} 件を出しています。`
+    : '';
+  $('#searchDialog').showModal();
+  $('#allSearch').focus();
+});
+$('#searchGo').addEventListener('click', async () => {
+  $('#searchDialog').close();
+  await loadAllCuts();
+  paintAllFilter();
+});
+$('#searchClear').addEventListener('click', async () => {
+  $('#allSearch').value = '';
+  $('#searchDialog').close();
+  await loadAllCuts();
+  paintAllFilter();
+});
+$('#allSearch').addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter') { ev.preventDefault(); $('#searchGo').click(); }
+});
+$('#allFilterClear').addEventListener('click', () => $('#searchClear').click());
 $('#menuBtn').addEventListener('click', openLogs);
 $('#shareLinksBtn').addEventListener('click', openShareLinks);
 $('#closeShareLinks').addEventListener('click', () => $('#shareLinksDialog').close());
