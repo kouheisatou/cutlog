@@ -1,0 +1,55 @@
+# いちばん簡単な始め方:  docker compose up -d   →  http://localhost:8787
+#
+# 既定は SQLite + ローカルディスク。設定は .env に書く（.env.example をコピー）。
+# 大きめの環境で使うときは、下の postgres と minio のプロファイルを足す。
+services:
+  app:
+    build: .
+    image: ghcr.io/kouheisatou/cutlog:latest
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      DATA_DIR: /data
+      PORT: 8787
+    ports: ["8787:8787"]
+    volumes:
+      - cutlog_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+
+  # ── 規模が大きいとき（DB_DRIVER=postgres と DATABASE_URL を .env に書く） ──
+  postgres:
+    image: postgres:17-alpine
+    profiles: ["postgres"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cutlog
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cutlog}
+      POSTGRES_DB: cutlog
+    volumes:
+      - cutlog_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cutlog"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── メディアをS3互換に置くとき（STORAGE_DRIVER=s3 と S3_* を .env に書く） ──
+  minio:
+    image: minio/minio:latest
+    profiles: ["minio"]
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-cutlog}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-cutlogcutlog}
+    ports: ["9000:9000", "9001:9001"]
+    volumes:
+      - cutlog_minio:/data
+
+volumes:
+  cutlog_data:
+  cutlog_pg:
+  cutlog_minio:

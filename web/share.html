@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>cutlog で共有されたカット</title>
+<link rel="stylesheet" href="/styles.css?v=0.5.0" />
+</head>
+<body>
+<div class="auth" id="gate">
+  <div class="auth-card">
+    <h1 class="brand">cutlog</h1>
+    <p class="muted" id="shareTitle">共有</p>
+    <form id="pwForm" class="form" hidden>
+      <label>パスワード<input type="password" id="pw" autocomplete="current-password" /></label>
+      <p class="error" id="err" hidden></p>
+      <button class="btn primary block">開く</button>
+    </form>
+  </div>
+</div>
+<div class="app" id="viewer" hidden>
+  <header class="topbar">
+    <div class="topbar-title"><strong id="title">共有</strong><span class="muted" id="count"></span></div>
+  </header>
+  <div class="body" style="grid-template-columns:1fr">
+    <div class="list-body" id="items"></div>
+  </div>
+</div>
+<script type="module" src="/share.js?v=0.5.0"></script>
+</body>
+</html>

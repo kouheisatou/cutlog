@@ -1,0 +1,29 @@
+name: 不具合の報告
+description: うまく動かないところを教えてください
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 何が起きましたか
+      placeholder: 例）カレンダーで日付を押しても、その日のカットが出ません
+    validations: { required: true }
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現の手順
+      placeholder: |
+        1. ログインする
+        2. カレンダー表示にする
+        3. 8/22 を押す
+    validations: { required: true }
+  - type: input
+    id: env
+    attributes:
+      label: 環境
+      placeholder: 例）iPhone 15 / iOS 18 / Safari、cutlog v0.1.0、SQLite
+  - type: textarea
+    id: logs
+    attributes:
+      label: ログ（あれば）
+      render: shell

@@ -1,0 +1,20 @@
+name: 機能の提案
+description: あったら良いと思うものを教えてください
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 困っていること
+      placeholder: 例）共有するたびに、含めるカットを選び直すのが面倒です
+    validations: { required: true }
+  - type: textarea
+    id: idea
+    attributes:
+      label: こうなると良い
+      placeholder: 例）相手ごとに「いつもの組み合わせ」を保存できると助かります
+  - type: dropdown
+    id: help
+    attributes:
+      label: 自分で作ってみますか
+      options: ['作ってみたい', '相談しながらなら', '提案だけ']
