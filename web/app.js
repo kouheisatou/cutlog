@@ -447,10 +447,11 @@ async function openDetail(cutId, ctxName = 'day') {
   const { cut, reactions, myReactions, comments } = await api(`/cuts/${cutId}`);
   state.detailCut = cut;
   const el = $('#detail');
-  if (!$('#cutDialog').open) $('#cutDialog').showModal();
+  // 縦横の比を先に伝えておくと、読み込む前後で高さが動かない
+  const ratio = cut.width && cut.height ? `style="aspect-ratio:${cut.width}/${cut.height}"` : '';
   const media = cut.kind === 'photo'
-    ? `<img class="detail-media" src="${cut.url}" alt="" />`
-    : `<video class="detail-media" src="${cut.url}" controls playsinline></video>`;
+    ? `<img class="detail-media" ${ratio} src="${cut.url}" alt="" />`
+    : `<video class="detail-media" ${ratio} src="${cut.url}" controls playsinline preload="metadata"></video>`;
   el.innerHTML = `
     ${media}
     <div class="detail-head">
@@ -509,6 +510,8 @@ async function openDetail(cutId, ctxName = 'day') {
         <button class="btn" id="sendComment">送信</button>
       </div>
     </div>`;
+  // 中身がそろってから出す
+  if (!$('#cutDialog').open) $('#cutDialog').showModal();
   ctx.rerender();
   renderCrumbs();
 
@@ -582,9 +585,11 @@ function settleSheet(dlg) {
   if (!panel) return;
   setTimeout(() => {
     if (!dlg.open) return;
-    const r = panel.getBoundingClientRect();
-    const shown = window.innerHeight - r.top;
-    if (shown > r.height * 0.6) return;   // ちゃんと出ている
+    // せり上がりが終わっていれば、ずれ（translate）は残っていない。
+    // 残っているなら動きが走らなかったということなので、その場で置き直す。
+    const t = getComputedStyle(panel).transform;
+    const dy = t && t !== 'none' ? Number(t.split(',')[5]?.replace(')', '')) || 0 : 0;
+    if (Math.abs(dy) < 1) return;
     // ここで動きを切ったままにする。戻すと、止まっていた動きが元の位置へ引き戻すことがある。
     // 閉じるときに指定を消すので、次に開くときはまたせり上がる。
     panel.style.transition = 'none';

@@ -244,7 +244,11 @@ button.cal-day:disabled { cursor: default; }
   font-size: 13px; letter-spacing: .06em; line-height: 2.1;
 }
 .eyebrow { font-size: 9px; letter-spacing: .22em; color: var(--mute); display: block; margin: var(--s4) 0 var(--s1); }
-.detail-media { width: auto; max-width: 100%; max-height: 62dvh; display: block; background: var(--paper-2); }
+.detail-media {
+  width: 100%; max-width: 100%; max-height: 62dvh; display: block;
+  background: var(--paper-2); object-fit: contain;
+  aspect-ratio: 16 / 9;   /* 寸法が分からないうちの当て（分かれば個別に上書きする） */
+}
 .detail h2 { margin: 0 0 var(--s3); font-family: var(--mono); font-size: 22px; font-weight: 500; letter-spacing: .02em; }
 .detail-actions { display: flex; gap: var(--s3); flex-wrap: wrap; margin: var(--s3) 0 var(--s4); }
 
