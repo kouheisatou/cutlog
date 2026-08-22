@@ -30,6 +30,12 @@ die()  { printf '  \033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 
 trap 'die "途中で失敗しました（$BASH_COMMAND）。中身は入れ替えていません。"' ERR
 
+# ── 使い方だけ見たいとき（どこで実行しても出せる） ──────
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  sed -n '3,13p' "$0" | sed 's/^# \{0,1\}//'
+  exit 0
+fi
+
 # ── 使う道具がそろっているか ────────────────────────────
 need() { command -v "$1" >/dev/null 2>&1 || die "$1 が見つかりません。"; }
 need git
@@ -41,7 +47,33 @@ docker compose version >/dev/null 2>&1 || die "docker compose が使えません
 cd "$APP_DIR"
 mkdir -p "$STATE_DIR"
 
+# ── 自分の身を守る ──────────────────────────────────────
+# git を切り替えると、いま動いているこのファイル自身が書き換わったり消えたりする。
+# bash は走りながら台本を読むので、そうなると途中でおかしくなる。
+# 先に控えを作り、そちらへ移ってから本題に入る。
+if [ "${CUTLOG_DEPLOY_DETACHED:-}" != "1" ]; then
+  SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+  COPY="$(mktemp "${TMPDIR:-/tmp}/cutlog-deploy.XXXXXX")"
+  cp -f "$SELF" "$COPY"
+  chmod +x "$COPY"
+  # 控えは終わったら消す。exec するので、後始末は控え側で行う。
+  CUTLOG_DEPLOY_DETACHED=1 CUTLOG_DEPLOY_COPY="$COPY" exec "$COPY" "$@"
+fi
+if [ -n "${CUTLOG_DEPLOY_COPY:-}" ]; then
+  trap 'rm -f "$CUTLOG_DEPLOY_COPY"' EXIT
+fi
+
 compose() { docker compose "$@"; }
+
+# 切り替えた先にこのスクリプトが無い版（deploy.sh を入れる前の古い版）もある。
+# その場合は控えを置き直して、次も同じように更新できるようにする。
+keep_self() {
+  [ -n "${CUTLOG_DEPLOY_COPY:-}" ] || return 0
+  [ -e "$APP_DIR/deploy.sh" ] && return 0
+  cp -f "$CUTLOG_DEPLOY_COPY" "$APP_DIR/deploy.sh"
+  chmod +x "$APP_DIR/deploy.sh"
+  warn "この版には deploy.sh が無いので、いまの物を置いておきました"
+}
 
 short() { git rev-parse --short "$1" 2>/dev/null || echo '?'; }
 subject() { git log -1 --format='%s' "$1" 2>/dev/null || echo '?'; }
@@ -92,6 +124,7 @@ rollback_to() {
   local target="$1"
   warn "直前の版（$(short "$target")）へ戻します"
   git -c advice.detachedHead=false checkout -q --force "$target"
+  keep_self
   compose build >/dev/null 2>&1 || compose build
   compose up -d --remove-orphans
   if wait_healthy; then
@@ -116,10 +149,6 @@ case "${1:-}" in
     trap - ERR
     rollback_to "$PREV"
     show_status
-    exit 0
-    ;;
-  --help|-h)
-    sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'
     exit 0
     ;;
   "") TARGET="" ;;
@@ -166,6 +195,7 @@ echo "$CUR" > "$PREV_FILE"
 
 say "作業場所を新しい版にする"
 git -c advice.detachedHead=false checkout -q --force "$NEW"
+keep_self
 ok "$(short HEAD)  $(subject HEAD)"
 
 # ここから先で失敗したら、自分で元へ戻す
