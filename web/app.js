@@ -234,15 +234,6 @@ function setCrumbs(el, items) {
   el.appendChild(ol);
 }
 
-// 終点は、そのカットが何かが分かる言い方にする。
-// メモがあればメモ。無ければ日付と時刻で表す。
-function activeCutLabel(cut, { withDate = true } = {}) {
-  if (!cut) return null;
-  if (cut.note) return cut.note;
-  const t = fmtTime(cut.takenAt, cut.tzOffset);
-  return withDate ? `${cut.localDate.replace(/-/g, '.')} ${t}` : t;
-}
-
 function renderCrumbs() {
   const toLogs = () => { openLogs(); };
 
@@ -260,25 +251,16 @@ function renderCrumbs() {
     { label: state.log ? state.log.name : '—', go: toDay },
     { label: state.day ? state.day.replace(/-/g, '.') : '—' },
   ];
-  if (state.detailCut && state.detailFrom === 'day') {
-    dayItems[2] = { label: state.day ? state.day.replace(/-/g, '.') : '—', go: () => closeCutDetail() };
-    dayItems.push({ label: activeCutLabel(state.detailCut, { withDate: false }) });
-  }
   setCrumbs($('#dayCrumbs'), dayItems);
 
-  const allItems = (state.detailCut && state.detailFrom === 'all')
-    ? [{ label: 'カット一覧', go: () => closeCutDetail() }, { label: activeCutLabel(state.detailCut) }]
-    : [];
-  setCrumbs($('#allCrumbs'), allItems);
+  setCrumbs($('#allCrumbs'), []);
 
   // マップ：てっぺんでは出さない。潜ったときだけ道すじにする。
   const toMap = () => { state.mapPick = []; showScreen('map'); };
-  const mapItems = [{ label: 'マップ', go: toMap }, { label: `この場所の${state.mapPick.length}件` }];
-  if (state.detailCut && state.detailFrom === 'map') {
-    mapItems[1] = { label: `この場所の${state.mapPick.length}件`, go: () => closeCutDetail() };
-    mapItems.push({ label: activeCutLabel(state.detailCut) });
-  }
-  setCrumbs($('#mapListCrumbs'), mapItems);
+  setCrumbs($('#mapListCrumbs'), [
+    { label: 'マップ', go: toMap },
+    { label: `この場所の${state.mapPick.length}件` },
+  ]);
 }
 
 async function loadLogs() {
