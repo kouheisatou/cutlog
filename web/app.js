@@ -14,14 +14,12 @@ const state = {
   activeCutId: null,
   day: null,             // いま開いている日（YYYY-MM-DD）
   dayCuts: [],
-  calMonth: new Date(),
   // 下のタブ（camera は撮影を開くだけの動き。画面としては残らない）
   tab: 'logs',
   // 「ログ」タブの中でどこまで潜っているか（logs = 一覧、log = ログの中、settings = 設定）
   logsStack: 'logs',
   // 全カット（ログをまたいだ一覧）
   allCuts: [],
-  allKind: '',
   activeAllCutId: null,
 };
 
@@ -84,26 +82,56 @@ function showAuth() {
   $('#dayScreen').hidden = true;
   $('#logSetScreen').hidden = true;
   $('#allScreen').hidden = true;
+  $('#mapScreen').hidden = true;
   $('#settingsScreen').hidden = true;
   $('#tabbar').hidden = true;
   $('#authScreen').hidden = false;
 }
 
+// 画面の深さ。奥へ進むときは右から、戻るときは左から出す。
+// 同じ深さ（タブの行き来）は、そっと入れ替える。
+const SCREEN_DEPTH = {
+  logs: 0, all: 0, map: 0, settings: 0, log: 1, logset: 2, day: 2,
+};
+let shownScreen = 'logs';
+
+function animateScreen(name) {
+  const el = {
+    logs: '#logsScreen', log: '#app', logset: '#logSetScreen', day: '#dayScreen',
+    all: '#allScreen', map: '#mapScreen', settings: '#settingsScreen',
+  }[name];
+  const box = $(el);
+  if (!box) return;
+  const from = SCREEN_DEPTH[shownScreen] ?? 0;
+  const to = SCREEN_DEPTH[name] ?? 0;
+  const kind = to > from ? 'enter-fwd' : (to < from ? 'enter-back' : 'enter-fade');
+  box.classList.remove('enter-fwd', 'enter-back', 'enter-fade');
+  // いったん外してから付け直さないと、同じ動きが二度目に走らない
+  void box.offsetWidth;
+  box.classList.add(kind);
+  box.addEventListener('animationend', () => box.classList.remove(kind), { once: true });
+  shownScreen = name;
+}
+
 // 画面は「ログ一覧（最上位）→ ログ → カットの詳細」の階層で切り替える。
 // 設定はログ一覧と並ぶ画面、全カットは下のタブで並ぶ画面である。
 function showScreen(name) {
+  if (name !== shownScreen) animateScreen(name);
   $('#logsScreen').hidden = name !== 'logs';
   $('#app').hidden = name !== 'log';
   $('#logSetScreen').hidden = name !== 'logset';
   $('#dayScreen').hidden = name !== 'day';
   $('#allScreen').hidden = name !== 'all';
+  $('#mapScreen').hidden = name !== 'map';
   $('#settingsScreen').hidden = name !== 'settings';
   // 画面から離れるときは、鳴っているものを止める
   if (name !== 'day' && play.playing) togglePlay();
-  state.tab = name === 'all' ? 'all' : 'logs';
-  if (name !== 'all') state.logsStack = name;
+  state.tab = { all: 'all', map: 'map', settings: 'settings' }[name] || 'logs';
+  if (state.tab === 'logs') state.logsStack = name;
   renderTabbar();
   renderCrumbs();
+  // カレンダーは、いちばん新しい月が見えている所から始める
+  if (name === 'log') scrollCalendarToNewest();
 }
 
 async function showApp() {
@@ -130,12 +158,47 @@ function renderTabbar() {
 async function selectTab(tab) {
   if (tab === 'camera') { openCapture(); return; }
   if (tab === 'all') { await openAllCuts(); return; }
+  if (tab === 'map') { await openMap(); return; }
+  if (tab === 'settings') { openSettings(); return; }
   // ログのタブ。すでにログのタブにいるなら、一段上（ログ一覧）へ戻る。
   if (state.tab === 'logs' && state.logsStack !== 'logs') { await openLogs(); return; }
   if (state.logsStack === 'log' && state.log) { showScreen('log'); return; }
   if (state.logsStack === 'settings') { showScreen('settings'); return; }
   await openLogs();
 }
+
+
+// ── 左右にはらってタブを移る ────────────────────────────
+// 目盛りをつまむ動きや、映像の上での二本指と喧嘩しないよう、
+// 始まった場所と、横に大きく動いたかどうかで見分ける。
+const TAB_ORDER = ['camera', 'logs', 'all', 'map', 'settings'];
+const swipe = { x: 0, y: 0, t: 0, live: false };
+
+function swipeStartOk(target) {
+  if (document.querySelector('dialog[open]')) return false;
+  return !target.closest('.scrub, .stage, input[type=range], video, .detail-pane, .pick-list');
+}
+
+document.addEventListener('touchstart', (ev) => {
+  if (ev.touches.length !== 1 || !swipeStartOk(ev.target)) { swipe.live = false; return; }
+  swipe.x = ev.touches[0].clientX;
+  swipe.y = ev.touches[0].clientY;
+  swipe.t = ev.timeStamp;
+  swipe.live = true;
+}, { passive: true });
+
+document.addEventListener('touchend', (ev) => {
+  if (!swipe.live) return;
+  swipe.live = false;
+  const t = ev.changedTouches[0];
+  const dx = t.clientX - swipe.x;
+  const dy = t.clientY - swipe.y;
+  const dt = ev.timeStamp - swipe.t;
+  if (dt > 700 || Math.abs(dx) < 64 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+  const now = TAB_ORDER.indexOf(state.tab);
+  const next = TAB_ORDER[now + (dx < 0 ? 1 : -1)];
+  if (next) selectTab(next);
+}, { passive: true });
 
 // ── パンくず ────────────────────────────────────────────
 // いまどこにいるかを「上から順の道すじ」で出す。最後の1つがいまの場所。
@@ -174,7 +237,7 @@ function activeCutLabel(cut) {
 function renderCrumbs() {
   const toLogs = () => { openLogs(); };
   setCrumbs($('#logsCrumbs'), [{ label: 'ログ' }]);
-  setCrumbs($('#settingsCrumbs'), [{ label: 'ログ', go: toLogs }, { label: '設定' }]);
+  setCrumbs($('#settingsCrumbs'), [{ label: '設定' }]);
 
   setCrumbs($('#logCrumbs'), [{ label: 'ログ', go: toLogs }, { label: state.log ? state.log.name : '—' }]);
   setCrumbs($('#logSetCrumbs'), [
@@ -197,6 +260,7 @@ function renderCrumbs() {
   }
   setCrumbs($('#dayCrumbs'), dayItems);
 
+  setCrumbs($('#mapCrumbs'), [{ label: 'マップ' }]);
   const allItems = [{ label: '全カット' }];
   const openAll = state.allCuts.find((c) => c.id === state.activeAllCutId);
   if ($('#allScreen').classList.contains('detail-open') && openAll) {
@@ -282,55 +346,92 @@ function pressable(el, label, fn) {
 
 
 function renderCalendar(body) {
-  const wrap = document.createElement('div');
-  wrap.className = 'cal';
-  const cur = state.calMonth;
-  const y = cur.getFullYear();
-  const m = cur.getMonth();
   const counts = new Map();
   for (const c of state.cuts) counts.set(c.localDate, (counts.get(c.localDate) || 0) + 1);
-  const head = document.createElement('div');
-  head.className = 'cal-head';
-  head.innerHTML = `<button class="mini" id="calPrev" aria-label="前の月"><svg class="ic sm"><use href="#ic-prev"/></svg></button>
-    <strong>${y}.${String(m + 1).padStart(2, '0')}</strong>
-    <button class="mini" id="calNext" aria-label="次の月"><svg class="ic sm"><use href="#ic-next"/></svg></button>
-    <div class="spacer"></div>
-    <span class="muted small">${state.cuts.length}カット</span>`;
-  wrap.appendChild(head);
-  const grid = document.createElement('div');
-  grid.className = 'cal-grid';
-  for (const d of ['日', '月', '火', '水', '木', '金', '土']) {
-    const el = document.createElement('div');
-    el.className = 'cal-dow';
-    el.textContent = d;
-    grid.appendChild(el);
+
+  // 月を1つずつめくるのではなく、縦に積んで上下に流して見られるようにする。
+  // 出す範囲は「いちばん古いカットの月」から「今月（それより後のカットがあればその月）」まで。
+  const dates = [...counts.keys()].sort();
+  const today = new Date();
+  // 記録が少ないうちでも流して見られるよう、少なくとも1年ぶんは並べる
+  const floor = new Date(today.getFullYear(), today.getMonth() - 11, 1);
+  const oldest = dates.length ? new Date(`${dates[0]}T00:00:00`) : today;
+  const firstD = oldest < floor ? oldest : floor;
+  const lastCut = dates.length ? new Date(`${dates[dates.length - 1]}T00:00:00`) : today;
+  const lastD = lastCut > today ? lastCut : today;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'cal cal-scroll';
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+  let y = firstD.getFullYear();
+  let m = firstD.getMonth();
+  let guard = 0;
+  let jumpTo = null;
+  while ((y < lastD.getFullYear() || (y === lastD.getFullYear() && m <= lastD.getMonth())) && guard++ < 600) {
+    const month = document.createElement('section');
+    month.className = 'cal-month';
+    month.dataset.ym = `${y}-${String(m + 1).padStart(2, '0')}`;
+
+    const head = document.createElement('div');
+    head.className = 'cal-month-head';
+    const inMonth = state.cuts.filter((c) => c.localDate.startsWith(month.dataset.ym)).length;
+    head.innerHTML = `<strong>${y}.${String(m + 1).padStart(2, '0')}</strong>`
+      + `<span class="muted small">${inMonth ? `${inMonth}カット` : ''}</span>`;
+    month.appendChild(head);
+
+    const grid = document.createElement('div');
+    grid.className = 'cal-grid';
+    for (const d of ['日', '月', '火', '水', '木', '金', '土']) {
+      const el = document.createElement('div');
+      el.className = 'cal-dow';
+      el.textContent = d;
+      grid.appendChild(el);
+    }
+    const first = new Date(y, m, 1);
+    const days = new Date(y, m + 1, 0).getDate();
+    for (let i = 0; i < first.getDay(); i += 1) {
+      const el = document.createElement('div');
+      el.className = 'cal-day empty';
+      grid.appendChild(el);
+    }
+    for (let d = 1; d <= days; d += 1) {
+      const date = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const n = counts.get(date) || 0;
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = `cal-day${n ? ' has' : ''}${date === todayStr ? ' today' : ''}`;
+      if (state.day === date) el.className += ' on';
+      if (!n) el.disabled = true;
+      el.setAttribute('aria-label', `${m + 1}月${d}日、${n}カット`);
+      const bars = Array.from({ length: Math.min(n, 6) }, () => '<i></i>').join('');
+      el.innerHTML = `<span class="d">${String(d).padStart(2, '0')}</span><span class="bar">${bars}</span>`;
+      el.addEventListener('click', () => openDay(date));
+      grid.appendChild(el);
+    }
+    month.appendChild(grid);
+    wrap.appendChild(month);
+    jumpTo = month;
+    m += 1;
+    if (m > 11) { m = 0; y += 1; }
   }
-  const first = new Date(y, m, 1);
-  const days = new Date(y, m + 1, 0).getDate();
-  const today = new Date().toISOString().slice(0, 10);
-  for (let i = 0; i < first.getDay(); i += 1) {
-    const el = document.createElement('div');
-    el.className = 'cal-day empty';
-    grid.appendChild(el);
-  }
-  for (let d = 1; d <= days; d += 1) {
-    const date = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    const n = counts.get(date) || 0;
-    const el = document.createElement('button');
-    el.type = 'button';
-    el.className = `cal-day${n ? ' has' : ''}${date === today ? ' today' : ''}`;
-    if (state.day === date) el.className += ' on';
-    if (!n) el.disabled = true;
-    el.setAttribute('aria-label', `${m + 1}月${d}日、${n}カット`);
-    const bars = Array.from({ length: Math.min(n, 6) }, () => '<i></i>').join('');
-    el.innerHTML = `<span class="d">${String(d).padStart(2, '0')}</span><span class="bar">${bars}</span>`;
-    el.addEventListener('click', () => openDay(date));
-    grid.appendChild(el);
-  }
-  wrap.appendChild(grid);
+
   body.appendChild(wrap);
-  $('#calPrev').addEventListener('click', () => { state.calMonth = new Date(y, m - 1, 1); render(); });
-  $('#calNext').addEventListener('click', () => { state.calMonth = new Date(y, m + 1, 1); render(); });
+}
+
+// いちばん新しい月が見えている所から始める。
+// 画面が出てからでないと動かせないので、出したあとに呼ぶ。
+function scrollCalendarToNewest() {
+  const sb = $('#app .screen-body');
+  if (!sb) return;
+  // 画面を出した直後に呼ぶ。scrollHeight を読むと、その場で高さが決まるので、
+  // フレームを待たずに合わせられる（待ちに頼ると、裏に回った画面では動かない）。
+  const max = sb.scrollHeight - sb.clientHeight;
+  if (max <= 0) return;
+  const keep = sb.style.scrollBehavior;
+  sb.style.scrollBehavior = 'auto';   // ここは滑らかに動かさず、その場で合わせる
+  sb.scrollTop = max;
+  sb.style.scrollBehavior = keep;
 }
 
 
@@ -348,6 +449,14 @@ const DETAIL_CTX = {
     setActive: (id) => { state.activeCutId = id; },
     rerender: () => renderDayList(),
     refresh: () => reloadDay(),
+  },
+  map: {
+    screen: '#mapScreen',
+    detail: '#mapDetail',
+    empty: '#mapDetailEmpty',
+    setActive: () => {},
+    rerender: () => drawMap(),
+    refresh: () => loadMapCuts().then(drawMap),
   },
   all: {
     screen: '#allScreen',
@@ -373,11 +482,18 @@ async function openDetail(cutId, ctxName = 'day') {
   el.innerHTML = `
     <button class="btn" id="backToList"><svg class="ic sm"><use href="#ic-back"/></svg>一覧へ戻る</button>
     ${media}
-    <span class="eyebrow">${cut.kind === 'photo' ? 'PHOTO' : 'VIDEO'} · ${escapeHtml(cut.author || '')}</span>
-    <h2>${cut.localDate.replace(/-/g, '.')} ${fmtTime(cut.takenAt, cut.tzOffset)}</h2>
+    <div class="detail-head">
+      <div>
+        <span class="eyebrow">${escapeHtml(cut.author || '')}</span>
+        <h2>${cut.localDate.replace(/-/g, '.')} ${fmtTime(cut.takenAt, cut.tzOffset)}</h2>
+      </div>
+      <div class="spacer"></div>
+      <button class="icon-btn" id="metaBtn" aria-expanded="false" aria-label="詳しい値を見る・直す">
+        <svg class="ic"><use href="#ic-settings"/></svg>
+      </button>
+    </div>
     <div class="detail-actions">
       <button class="btn" id="dlBtn"><svg class="ic sm"><use href="#ic-download"/></svg>ダウンロード</button>
-      <button class="btn" id="shareOne"><svg class="ic sm"><use href="#ic-share"/></svg>共有</button>
       <button class="btn" id="moveOne"><svg class="ic sm"><use href="#ic-move"/></svg>移動</button>
       <button class="btn danger" id="delBtn"><svg class="ic sm"><use href="#ic-trash"/></svg>削除</button>
     </div>
@@ -387,6 +503,7 @@ async function openDetail(cutId, ctxName = 'day') {
     return `<button class="reaction${myReactions.includes(e) ? ' on' : ''}" data-emoji="${e}">${e} ${n || ''}</button>`;
   }).join('')}
     </div>
+    <div id="metaBox" hidden>
     <label class="small muted" for="noteEdit">メモ</label>
     <div class="panel-row">
       <input id="noteEdit" value="${cut.note ? escapeHtml(cut.note) : ''}" placeholder="ひとこと" />
@@ -404,8 +521,12 @@ async function openDetail(cutId, ctxName = 'day') {
       <tr><td>撮影方法</td><td>${cut.source === 'upload' ? 'ファイルから取り込み' : 'その場で撮影'}</td></tr>
       <tr><td>サイズ</td><td>${fmtBytes(cut.bytes)}</td></tr>
       <tr><td>チェックサム</td><td class="small">${cut.checksum ? `${cut.checksum.slice(0, 16)}…` : '—'}</td></tr>
+      <tr><td>撮った場所</td><td class="small">${cut.lat != null && cut.lon != null
+        ? `${cut.lat.toFixed(5)}, ${cut.lon.toFixed(5)}${cut.placeAccuracy ? `（だいたい${Math.round(cut.placeAccuracy)}m）` : ''}`
+        : '—'}</td></tr>
       <tr><td>ID</td><td class="small">${cut.id}</td></tr>
     </table>
+    </div>
     <div class="comments">
       <h3 class="small muted">コメント</h3>
       ${comments.map((c) => `<div class="comment"><strong>${escapeHtml(c.author)}</strong> ${escapeHtml(c.body)}</div>`).join('')}
@@ -419,10 +540,16 @@ async function openDetail(cutId, ctxName = 'day') {
 
   // 2つの詳細（ログの中・全カット）が同じidを持つので、必ずこの画面の中だけを探す。
   $('#backToList', el).addEventListener('click', () => {
-    if (ctxName === 'all') closeAllDetail(); else closeDetailPane();
+    if (ctxName === 'all') closeAllDetail();
+    else if (ctxName === 'map') closeMapDetail();
+    else closeDetailPane();
   });
   $('#dlBtn', el).addEventListener('click', () => { window.location.href = `${cut.url}?download=1`; });
-  $('#shareOne', el).addEventListener('click', () => openPicker('share', [cut.id]));
+  $('#metaBtn', el).addEventListener('click', () => {
+    const box = $('#metaBox', el);
+    box.hidden = !box.hidden;
+    $('#metaBtn', el).setAttribute('aria-expanded', String(!box.hidden));
+  });
   $('#moveOne', el).addEventListener('click', () => openMove([cut.id], cut.logId, { single: true }));
   $('#delBtn', el).addEventListener('click', async () => {
     if (!confirm('このカットを削除しますか。ゴミ箱から戻せます。')) return;
@@ -454,6 +581,134 @@ async function openDetail(cutId, ctxName = 'day') {
 
 
 
+
+
+
+// ── モーダル ────────────────────────────────────────────
+// 外側を押しても、右上のばつを押しても閉じる。逃げ道を必ず用意する。
+function wireModals() {
+  $$('dialog.sheet').forEach((dlg) => {
+    // 背景（dialog そのもの）を押したときだけ閉じる。中身の上での指の動きは拾わない。
+    dlg.addEventListener('pointerdown', (ev) => { dlg.dataset.downOutside = String(ev.target === dlg); });
+    dlg.addEventListener('click', (ev) => {
+      if (ev.target === dlg && dlg.dataset.downOutside === 'true') closeModal(dlg);
+    });
+    $$('[data-close]', dlg).forEach((b) => b.addEventListener('click', () => closeModal(dlg)));
+  });
+}
+
+function closeModal(dlg) {
+  if (dlg.id === 'captureDialog') { closeCapture(); return; }
+  dlg.close();
+}
+
+// ── マップ ──────────────────────────────────────────────
+// 撮った場所を地図の上に出す。地図の絵（タイル）は決まった住所から <img> で取るだけなので、
+// 外の道具を読み込まなくても動く。タイルの出どころはサーバの設定で変えられる。
+const map = { z: 13, cx: 0, cy: 0, cuts: [], tileUrl: '', credit: '', ready: false };
+const TILE = 256;
+
+const lon2x = (lon, z) => ((lon + 180) / 360) * Math.pow(2, z);
+const lat2y = (lat, z) => {
+  const r = (lat * Math.PI) / 180;
+  return ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * Math.pow(2, z);
+};
+
+async function openMap() {
+  showScreen('map');
+  if (!map.cuts.length) await loadMapCuts();
+  drawMap();
+}
+
+async function loadMapCuts() {
+  const { cuts } = await api('/cuts?limit=500');
+  map.cuts = cuts.filter((c) => c.lat != null && c.lon != null);
+  $('#mapCount').textContent = `${map.cuts.length}件`;
+  $('#mapEmpty').hidden = map.cuts.length > 0;
+  map.tileUrl = state.config?.mapTileUrl || '';
+  map.credit = state.config?.mapCredit || '';
+  $('#mapCredit').textContent = map.credit;
+  if (map.cuts.length && !map.ready) {
+    // はじめは、撮った場所が全部入るところへ合わせる
+    const lats = map.cuts.map((c) => c.lat);
+    const lons = map.cuts.map((c) => c.lon);
+    const midLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+    const midLon = (Math.min(...lons) + Math.max(...lons)) / 2;
+    const span = Math.max(Math.max(...lats) - Math.min(...lats), Math.max(...lons) - Math.min(...lons));
+    map.z = span > 0 ? Math.max(2, Math.min(16, Math.floor(Math.log2(360 / span)) - 1)) : 14;
+    map.cx = lon2x(midLon, map.z);
+    map.cy = lat2y(midLat, map.z);
+    map.ready = true;
+  }
+}
+
+function drawMap() {
+  const host = $('#mapHost');
+  const w = host.clientWidth || 640;
+  const h = host.clientHeight || 480;
+  const tiles = $('#mapTiles');
+  const pins = $('#mapPins');
+  tiles.innerHTML = '';
+  pins.innerHTML = '';
+  if (!map.cuts.length) return;
+
+  // 画面の真ん中がどのタイルの、どの位置に当たるかを出す
+  const left = map.cx * TILE - w / 2;
+  const top = map.cy * TILE - h / 2;
+  const n = Math.pow(2, map.z);
+
+  if (map.tileUrl) {
+    const x0 = Math.floor(left / TILE);
+    const y0 = Math.floor(top / TILE);
+    const x1 = Math.floor((left + w) / TILE);
+    const y1 = Math.floor((top + h) / TILE);
+    for (let x = x0; x <= x1; x += 1) {
+      for (let y = y0; y <= y1; y += 1) {
+        if (y < 0 || y >= n) continue;
+        const img = document.createElement('img');
+        img.className = 'tile';
+        img.loading = 'lazy';
+        img.alt = '';
+        img.src = map.tileUrl
+          .replace('{z}', map.z).replace('{x}', ((x % n) + n) % n).replace('{y}', y);
+        img.style.left = `${x * TILE - left}px`;
+        img.style.top = `${y * TILE - top}px`;
+        tiles.appendChild(img);
+      }
+    }
+  }
+
+  for (const c of map.cuts) {
+    const px = lon2x(c.lon, map.z) * TILE - left;
+    const py = lat2y(c.lat, map.z) * TILE - top;
+    if (px < -40 || py < -40 || px > w + 40 || py > h + 40) continue;
+    const pin = document.createElement('button');
+    pin.type = 'button';
+    pin.className = 'map-pin';
+    pin.style.left = `${px}px`;
+    pin.style.top = `${py}px`;
+    pin.setAttribute('aria-label', `${c.localDate} ${fmtTime(c.takenAt, c.tzOffset)} のカット`);
+    pin.innerHTML = c.thumbUrl ? `<img src="${c.thumbUrl}" alt="" />` : '<span></span>';
+    pin.addEventListener('click', () => openDetail(c.id, 'map'));
+    pins.appendChild(pin);
+  }
+}
+
+function mapZoom(d) {
+  const z = Math.max(2, Math.min(18, map.z + d));
+  if (z === map.z) return;
+  const k = Math.pow(2, z - map.z);
+  map.cx *= k;
+  map.cy *= k;
+  map.z = z;
+  drawMap();
+}
+
+function closeMapDetail() {
+  $('#mapScreen').classList.remove('detail-open');
+  drawMap();
+  renderCrumbs();
+}
 
 // ── このログの設定 ──────────────────────────────────────
 // ログに関わることは、全体の設定ではなくここに集める。
@@ -624,8 +879,6 @@ function markActiveClip() {
 
 function renderDayList() {
   const list = $('#dayList');
-  const shown = state.dayCuts.filter((c) => !c.hidden).length;
-  $('#dayCount').textContent = `${shown} / ${state.dayCuts.length} クリップ　${fmtClock(play.total)}`;
   list.innerHTML = '';
   if (!state.dayCuts.length) {
     list.innerHTML = '<div class="empty">この日のカットはありません。</div>';
@@ -644,7 +897,7 @@ function renderDayList() {
       <span class="thumb">${c.thumbUrl ? `<img loading="lazy" src="${c.thumbUrl}" alt="" />` : ''}</span>
       <span class="meta">
         <span class="n">${c.note ? escapeHtml(c.note) : escapeHtml(c.author || '')}</span>
-        <span class="k">${c.kind === 'photo' ? 'PHOTO' : 'VIDEO'} · ${len}${c.hidden ? ' · 非表示' : ''}</span>
+        <span class="k">${len}${c.hidden ? ' · 非表示' : ''}</span>
       </span>`;
     // 行を押すと、その位置から続きを流す
     const jump = document.createElement('button');
@@ -667,9 +920,9 @@ function renderDayList() {
     // 情報のしるしで、そのカットの詳しい画面をひらく
     const info = document.createElement('button');
     info.type = 'button';
-    info.className = 'clip-info icon-btn';
-    info.setAttribute('aria-label', `${t} の詳しい情報`);
-    info.innerHTML = '<svg class="ic sm"><use href="#ic-search"/></svg>';
+    info.className = 'clip-info mini';
+    info.setAttribute('aria-label', `${t} の詳細`);
+    info.textContent = '詳細';
     info.addEventListener('click', (ev) => { ev.stopPropagation(); openDetail(c.id, 'day'); });
     row.append(jump, eye, info);
     list.appendChild(row);
@@ -810,9 +1063,11 @@ function paintProgress() {
   $('#pvClock').textContent = `${fmtClock(g)} / ${fmtClock(play.total)}`;
   $('#pvScrub').setAttribute('aria-valuenow', String(Math.round(g / 1000)));
   const it = play.items[play.idx];
-  $('#pvBadge').textContent = it
-    ? `${play.idx + 1} / ${play.items.length}　${fmtTime(it.cut.takenAt, it.cut.tzOffset)}${it.cut.note ? `　${it.cut.note}` : ''}`
-    : '';
+  // 左＝ログの題／中央＝メモ／右＝時刻。保存する動画と同じ並びにする。
+  $('#ovLog').textContent = it ? (state.log?.name || '') : '';
+  $('#ovNote').textContent = it ? (it.cut.note || '') : '';
+  $('#ovTime').textContent = it ? fmtTime(it.cut.takenAt, it.cut.tzOffset) : '';
+  $('#pvBadge').textContent = it ? `${play.idx + 1} / ${play.items.length}` : '';
   markActiveClip();
 }
 
@@ -1004,9 +1259,24 @@ let chunks = [];
 let pending = null;
 let facing = 'environment';
 
+// 撮った場所。許してもらえたときだけ入る。断られても撮影は止めない。
+let place = null;
+function askPlace() {
+  place = null;
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      place = { lat: pos.coords.latitude, lon: pos.coords.longitude, accuracy: pos.coords.accuracy };
+    },
+    () => { place = null; },
+    { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 },
+  );
+}
+
 async function openCapture() {
   const dlg = $('#captureDialog');
   dlg.showModal();
+  askPlace();
   $('#capTimer').textContent = `${state.log?.cut_seconds || 2}秒`;
   state.captureLogId = state.logId;
   updateCapDest();
@@ -1182,6 +1452,10 @@ async function saveCut() {
     facing,
     source: pending.source || 'camera',
     note: $('#noteInput').value.trim() || null,
+    // 場所は分かったときだけ添える
+    lat: place?.lat ?? null,
+    lon: place?.lon ?? null,
+    accuracy: place?.accuracy ?? null,
   }));
   const destId = state.captureLogId || state.logId;
   const destName = state.logs.find((l) => l.id === destId)?.name || '';
@@ -1198,8 +1472,8 @@ function openPicker(kind, presetIds) {
   const dlg = $('#exportDialog');
   const ids = presetIds || [...state.selected];
   if (!ids.length) { toast('この日にはカットがありません'); return; }
-  const titles = { export: 'カットの書き出し', share: '共有リンクの作成', render: 'まとめ動画の作成' };
-  const goLabels = { export: '書き出し', share: '作成', render: '作成' };
+  const titles = { export: '元のファイルの書き出し', share: '共有リンクの作成', render: '動画を保存' };
+  const goLabels = { export: '書き出し', share: '作成', render: '保存' };
   $('#exportTitle').textContent = titles[kind];
   $('#exportGo').textContent = goLabels[kind];
   $('#exportOptions').hidden = kind !== 'export';
@@ -1220,6 +1494,9 @@ function openPicker(kind, presetIds) {
   }
   $('#pickCount').textContent = `${$$('#exportList input:checked').length} / ${ids.length} 件`;
   if (kind === 'render') {
+    $('#advBox').hidden = true;
+    $('#advToggle').setAttribute('aria-expanded', 'false');
+    $('#advToggle').textContent = '詳しい設定を出す';
     const withNote = ids.map((cid) => state.cuts.find((c) => c.id === cid)).find((c) => c && c.note);
     state.pvNoteSample = withNote ? withNote.note.slice(0, 20) : 'ひとこと';
     fillStyleForm(state.renderStyle);
@@ -1278,12 +1555,12 @@ async function doRender(cutIds) {
     body: JSON.stringify({ cutIds, style, label: state.day || 'まとめ' }),
   });
   if (saved) state.renderStyle = saved;
-  toast('まとめ動画を作っています…');
+  toast('動画を作っています…');
   const poll = setInterval(async () => {
     const { job } = await api(`/jobs/${jobId}`);
     if (job.status === 'done') {
       clearInterval(poll);
-      toast('まとめ動画ができました。ダウンロードを始めます');
+      toast('動画ができました。ダウンロードを始めます');
       window.location.href = job.result.url;
     } else if (job.status === 'error') {
       clearInterval(poll);
@@ -1584,25 +1861,23 @@ async function openLogs() {
 function renderLogsList() {
   const list = $('#logsList');
   list.innerHTML = '';
-  $('#logsCount').textContent = `${state.logs.length} 件`;
   for (const l of state.logs) {
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'log-row';
-    if (l.id === state.logId) row.setAttribute('aria-current', 'true');
     // 左に最後のカットの見本、真ん中に名前と中身、右に「入れる」印。
     const thumb = l.latestThumbUrl
       ? `<img src="${l.latestThumbUrl}" alt="" loading="lazy" />`
       : `<svg class="ic"><use href="#ic-${l.kind === 'private' ? 'lock' : 'film'}"/></svg>`;
     const bits = [`${l.cut_count}カット`];
     if (l.kind === 'private') bits.push('非公開');
-    else bits.push(`${l.member_count}人`, `コード ${l.invite_code}`);
-    if (l.latestTakenAt) bits.push(`最後 ${l.latestTakenAt.slice(0, 10).replace(/-/g, '.')}`);
+    else bits.push(`${l.member_count}人`, l.ownerName || '');
+    if (l.latestTakenAt) bits.push(`最後 ${l.latestTakenAt.slice(5, 10).replace('-', '.')}`);
     row.innerHTML = `
       <span class="log-thumb${l.latestThumbUrl ? '' : ' blank'}">${thumb}</span>
       <span class="log-main">
         <span class="log-name">${escapeHtml(l.name)}</span>
-        <span class="log-sub">${bits.map(escapeHtml).join(' · ')}</span>
+        <span class="log-sub">${bits.filter(Boolean).map(escapeHtml).join(' · ')}</span>
       </span>
       <svg class="ic sm log-chev"><use href="#ic-next"/></svg>`;
     row.addEventListener('click', async () => {
@@ -1622,7 +1897,6 @@ async function openAllCuts() {
 
 async function loadAllCuts() {
   const params = new URLSearchParams();
-  if (state.allKind) params.set('kind', state.allKind);
   const q = $('#allSearch').value.trim();
   if (q) params.set('q', q);
   params.set('limit', '300');
@@ -1632,15 +1906,10 @@ async function loadAllCuts() {
 }
 
 function renderAll() {
-  $$('#allScreen .seg').forEach((b) => {
-    const on = (b.dataset.kind || '') === state.allKind;
-    b.classList.toggle('active', on);
-    b.setAttribute('aria-selected', String(on));
-  });
   const body = $('#allBody');
   body.innerHTML = '';
   if (!state.allCuts.length) {
-    body.innerHTML = `<div class="empty">${$('#allSearch').value.trim() || state.allKind
+    body.innerHTML = `<div class="empty">${$('#allSearch').value.trim()
       ? '条件に合うカットはありません。' : 'まだカットがありません。カメラのタブから撮ってみてください。'}</div>`;
     return;
   }
@@ -1665,7 +1934,6 @@ function renderAll() {
       const timeLabel = fmtTime(c.takenAt, c.tzOffset);
       cell.innerHTML = `
         ${c.thumbUrl ? `<img loading="lazy" src="${c.thumbUrl}" alt="" />` : '<span class="ph"></span>'}
-        ${c.kind === 'video' ? '<svg class="ic sm badge"><use href="#ic-film"/></svg>' : ''}
         <span class="cap"><span class="t">${timeLabel}</span><span class="lg">${escapeHtml(c.logName || '')}</span></span>`;
       pressable(cell, `${escapeHtml(c.logName || '')} ${timeLabel} のカットを開く`, () => openDetail(c.id, 'all'));
       wrap.appendChild(cell);
@@ -1755,11 +2023,38 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 // ── イベント ────────────────────────────────────────────
-$$('#allScreen .seg').forEach((b) => b.addEventListener('click', () => {
-  state.allKind = b.dataset.kind || '';
-  loadAllCuts();
-}));
 $('#allSearch').addEventListener('input', debounce(loadAllCuts, 350));
+// 端末の動画から取り込む（何本でも。行き先は既定の記録先）
+$('#allAddInput').addEventListener('change', async (ev) => {
+  const files = [...(ev.target.files || [])].filter((f) => f.type.startsWith('video/'));
+  ev.target.value = '';
+  if (!files.length) { toast('動画を選んでください'); return; }
+  const destId = state.defaultLogId || state.privateLogId || state.logId;
+  const destName = state.logs.find((l) => l.id === destId)?.name || '';
+  toast(`${files.length}本を${destName}へ取り込んでいます…`, 6000);
+  let done = 0;
+  for (const file of files) {
+    const fd = new FormData();
+    fd.append('file', file, file.name);
+    fd.append('meta', JSON.stringify({
+      kind: 'video',
+      // 端末に入っている撮影日時が分かればそれを使う。分からなければ今にする。
+      takenAt: new Date(file.lastModified || Date.now()).toISOString(),
+      tzOffset: new Date().getTimezoneOffset(),
+      source: 'upload',
+    }));
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await api(`/logs/${destId}/cuts`, { method: 'POST', body: fd });
+      done += 1;
+    } catch (err) {
+      toast(`${file.name}: ${err.message}`, 5000);
+    }
+  }
+  toast(`${done}本を取り込みました`);
+  await loadAllCuts();
+  if (state.logId === destId) await loadCuts();
+});
 $$('.tab-item').forEach((b) => b.addEventListener('click', () => selectTab(b.dataset.tab)));
 // その日の詳細：書き出し・共有・まとめ動画は、どれもモーダルで中身を選び直してもらう
 $('#dayExport').addEventListener('click', () => openPicker('export', dayIds()));
@@ -1867,8 +2162,16 @@ $('#fileInput').addEventListener('change', async (e) => {
   pending = { blob: file, kind: 'video', durationMs: null, mime: file.type, source: 'upload' };
   showReview(URL.createObjectURL(file), 'video');
 });
-$('#settingsBtn').addEventListener('click', openSettings);
-$('#settingsBack').addEventListener('click', openLogs);
+wireModals();
+$('#advToggle').addEventListener('click', () => {
+  const box = $('#advBox');
+  const open = box.hidden;
+  box.hidden = !open;
+  $('#advToggle').setAttribute('aria-expanded', String(open));
+  $('#advToggle').textContent = open ? '詳しい設定を隠す' : '詳しい設定を出す';
+});
+$('#mapZoomIn').addEventListener('click', () => mapZoom(1));
+$('#mapZoomOut').addEventListener('click', () => mapZoom(-1));
 $('#menuBtn').addEventListener('click', openLogs);
 $('#shareLinksBtn').addEventListener('click', openShareLinks);
 $('#closeShareLinks').addEventListener('click', () => $('#shareLinksDialog').close());

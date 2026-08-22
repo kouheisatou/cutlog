@@ -8,7 +8,7 @@
 <title>cutlog</title>
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="/styles.css?v=0.8.0" />
+<link rel="stylesheet" href="/styles.css?v=0.9.5" />
 </head>
 <body>
 <svg class="sprite" aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute">
@@ -41,6 +41,7 @@
   <symbol id="ic-sound" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6"/></g></symbol>
   <symbol id="ic-mute" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M16 10l4 4M20 10l-4 4"/></g></symbol>
   <symbol id="ic-expand" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/></g></symbol>
+  <symbol id="ic-pin" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></g></symbol>
   <symbol id="ic-lock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="6" y="11" width="12" height="9"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"/></g></symbol>
 </svg>
 
@@ -48,11 +49,8 @@
 <div id="logsScreen" class="app" hidden>
   <header class="topbar">
     <nav id="logsCrumbs" class="crumbs" aria-label="いまいる場所"></nav>
-    <div class="spacer"></div>
-    <button id="settingsBtn" class="icon-btn" aria-label="設定"><svg class="ic"><use href="#ic-settings"/></svg></button>
   </header>
   <main class="screen-body">
-    <h2 class="section-head"><span>ログ</span><span id="logsCount" class="muted"></span></h2>
     <nav aria-label="ログ一覧">
       <div id="logsList" class="logs-list"></div>
     </nav>
@@ -95,13 +93,12 @@
     <nav id="logSetCrumbs" class="crumbs" aria-label="いまいる場所"></nav>
   </header>
   <main class="screen-body">
-    <h2 class="section-head"><span>このログ</span></h2>
     <div class="panel-row">
-      <label>名前<input id="logSetName" maxlength="80" /></label>
+      <label>タイトル<input id="logSetName" maxlength="80" /></label>
     </div>
     <div class="panel-row">
       <label>1クリップの長さ<input id="logSetSeconds" type="number" min="1" max="30" step="1" /></label>
-      <span class="muted small">秒。撮るときも、つないで見るときも、この長さでそろえます。</span>
+      <span class="muted small">秒</span>
     </div>
     <div class="panel-row">
       <label class="check"><input type="checkbox" id="logSetDefault" /> 行き先を決めずに撮ったカットを、このログに入れる</label>
@@ -110,14 +107,14 @@
       <button id="logSetSave" class="btn primary">保存</button>
     </div>
 
-    <h2 class="section-head"><span>招く</span></h2>
+    <h2 class="section-head"><span>招待</span></h2>
     <div class="panel-row" id="logSetInviteRow">
       <span class="tc" id="logSetInvite"></span>
       <button id="logSetCopyInvite" class="mini"><svg class="ic sm"><use href="#ic-copy"/></svg>コピー</button>
       <button id="logSetRotate" class="mini">作り直す</button>
     </div>
 
-    <h2 class="section-head"><span>いる人</span><span id="logSetMemberCount" class="muted"></span></h2>
+    <h2 class="section-head"><span>参加者</span><span id="logSetMemberCount" class="muted"></span></h2>
     <div id="logSetMembers" class="member-list"></div>
 
     <h2 class="section-head"><span>共有リンク</span></h2>
@@ -153,6 +150,11 @@
           <img id="pvImg" alt="" hidden />
           <div class="stage-empty" id="pvEmpty">この日に出せるクリップがありません</div>
           <button class="stage-tap" id="pvTap" aria-label="再生・一時停止"></button>
+          <div class="stage-overlay" aria-hidden="true">
+            <span class="ov ov-left" id="ovLog"></span>
+            <span class="ov ov-center" id="ovNote"></span>
+            <span class="ov ov-right" id="ovTime"></span>
+          </div>
           <div class="stage-badge" id="pvBadge"></div>
         </div>
         <div class="scrub" id="pvScrub" role="slider" aria-label="再生位置" tabindex="0"
@@ -172,11 +174,10 @@
       </div>
 
       <div class="day-bar">
-        <span class="tc" id="dayCount"></span>
         <div class="spacer"></div>
         <button id="dayExport" class="mini primary"><svg class="ic sm"><use href="#ic-download"/></svg>書き出し</button>
         <button id="dayShare" class="mini"><svg class="ic sm"><use href="#ic-share"/></svg>共有</button>
-        <button id="dayRender" class="mini"><svg class="ic sm"><use href="#ic-merge"/></svg>まとめ動画</button>
+        <button id="dayRender" class="mini"><svg class="ic sm"><use href="#ic-merge"/></svg>動画を保存</button>
       </div>
 
       <div id="dayList" class="day-list"></div>
@@ -194,11 +195,11 @@
   <header class="topbar">
     <nav id="allCrumbs" class="crumbs" aria-label="いまいる場所"></nav>
     <div class="spacer"></div>
-    <div class="segmented" role="tablist" aria-label="種類の絞り込み">
-      <button data-kind="" class="seg active" role="tab" aria-selected="true">すべて</button>
-      <button data-kind="photo" class="seg" role="tab" aria-selected="false">写真</button>
-      <button data-kind="video" class="seg" role="tab" aria-selected="false">動画</button>
-    </div>
+    <label class="icon-btn" id="allAddBtn" title="端末の動画から取り込む">
+      <svg class="ic"><use href="#ic-plus"/></svg>
+      <span class="sr">端末の動画から取り込む</span>
+      <input id="allAddInput" type="file" accept="video/*" multiple hidden />
+    </label>
   </header>
   <main class="body">
     <aside id="allPane" class="list-pane">
@@ -262,7 +263,7 @@
       <label class="chip file">
         ファイルから選択<input id="fileInput" type="file" accept="video/*" hidden />
       </label>
-      <button id="shootBtn" class="shutter" aria-label="撮る"></button>
+      <button id="shootBtn" class="shutter" aria-label="撮る"><span class="dot"></span></button>
       <span class="chip ghost">動画</span>
     </div>
     <div id="reviewBar" class="review-bar" hidden>
@@ -276,6 +277,7 @@
 <!-- この撮影の記録先（撮影のたびに開いているログへ戻る） -->
 <dialog id="destDialog" class="sheet">
   <div class="panel">
+    <button type="button" class="panel-close icon-btn" data-close aria-label="閉じる"><svg class="ic"><use href="#ic-close"/></svg></button>
     <h2>この撮影の記録先</h2>
     <div id="destList" class="move-list"></div>
     <div class="panel-actions">
@@ -287,6 +289,7 @@
 <!-- 書き出し / 共有 -->
 <dialog id="exportDialog" class="sheet">
   <form method="dialog" class="panel">
+    <button type="button" class="panel-close icon-btn" data-close aria-label="閉じる"><svg class="ic"><use href="#ic-close"/></svg></button>
     <h2 id="exportTitle">書き出し</h2>
     <div class="pick-head">
       <span class="tc" id="pickCount"></span>
@@ -318,6 +321,8 @@
           <figcaption>本編</figcaption>
         </figure>
       </div>
+      <button type="button" id="advToggle" class="adv-toggle" aria-expanded="false">詳しい設定を出す</button>
+      <div id="advBox" hidden>
       <h3>画面</h3>
       <div class="panel-row">
         <label>大きさ<select id="stSize">
@@ -397,6 +402,7 @@
           <label>背景色<input id="stTitleBg" type="color" /></label>
         </div>
       </div>
+      </div>
     </div>
     <div class="panel-actions">
       <button value="cancel" class="btn">キャンセル</button>
@@ -408,6 +414,7 @@
 <!-- カットの移動 -->
 <dialog id="moveDialog" class="sheet">
   <form method="dialog" class="panel">
+    <button type="button" class="panel-close icon-btn" data-close aria-label="閉じる"><svg class="ic"><use href="#ic-close"/></svg></button>
     <h2>カットの移動</h2>
     <p class="muted small" id="moveNote">動かしたカットは、元のログで作った共有リンクから外れます。</p>
     <div id="moveList" class="move-list"></div>
@@ -419,10 +426,34 @@
   </form>
 </dialog>
 
+<!-- マップ（撮った場所を地図の上に出す） -->
+<div id="mapScreen" class="app" hidden>
+  <header class="topbar">
+    <nav id="mapCrumbs" class="crumbs" aria-label="いまいる場所"></nav>
+    <div class="spacer"></div>
+    <span id="mapCount" class="muted crumb-meta"></span>
+    <button id="mapZoomOut" class="icon-btn" aria-label="広く見る">−</button>
+    <button id="mapZoomIn" class="icon-btn" aria-label="寄って見る">＋</button>
+  </header>
+  <main class="body">
+    <aside class="list-pane">
+      <div class="map-host" id="mapHost">
+        <div class="map-tiles" id="mapTiles"></div>
+        <div class="map-pins" id="mapPins"></div>
+        <div class="map-empty" id="mapEmpty" hidden>場所の分かるカットがまだありません。</div>
+        <div class="map-credit" id="mapCredit"></div>
+      </div>
+    </aside>
+    <section id="mapDetailPane" class="detail-pane">
+      <div id="mapDetailEmpty" class="empty"></div>
+      <div id="mapDetail" hidden></div>
+    </section>
+  </main>
+</div>
+
 <!-- 設定（ログ一覧と並ぶ画面。既定の記録先・撮影の通知・アカウントだけ） -->
 <div id="settingsScreen" class="app" hidden>
   <header class="topbar">
-    <button id="settingsBack" class="icon-btn" aria-label="ログ一覧へ戻る"><svg class="ic"><use href="#ic-back"/></svg></button>
     <nav id="settingsCrumbs" class="crumbs" aria-label="いまいる場所"></nav>
   </header>
   <main class="screen-body">
@@ -463,6 +494,7 @@
 <!-- このログの共有リンクの一覧（ログの1つ下） -->
 <dialog id="shareLinksDialog" class="sheet">
   <div class="panel">
+    <button type="button" class="panel-close icon-btn" data-close aria-label="閉じる"><svg class="ic"><use href="#ic-close"/></svg></button>
     <h2>共有リンク</h2>
     <div id="shareList" class="share-list"></div>
     <div class="panel-actions">
@@ -482,9 +514,15 @@
   <button class="tab-item" data-tab="all" type="button">
     <svg class="ic"><use href="#ic-grid"/></svg><span>全カット</span>
   </button>
+  <button class="tab-item" data-tab="map" type="button">
+    <svg class="ic"><use href="#ic-pin"/></svg><span>マップ</span>
+  </button>
+  <button class="tab-item" data-tab="settings" type="button">
+    <svg class="ic"><use href="#ic-settings"/></svg><span>設定</span>
+  </button>
 </nav>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-<script type="module" src="/app.js?v=0.8.0"></script>
+<script type="module" src="/app.js?v=0.9.5"></script>
 </body>
 </html>

@@ -7,7 +7,7 @@ export const SIZE_PRESETS = {
   landscape: { width: 1280, height: 720 },
 };
 
-export const POSITIONS = ['tl', 'tc', 'tr', 'bl', 'bc', 'br'];
+export const POSITIONS = ['tl', 'tc', 'tr', 'ml', 'mc', 'mr', 'bl', 'bc', 'br'];
 
 export const TIME_FORMATS = {
   'HH:mm': (d) => d.toISOString().slice(11, 16),
@@ -26,10 +26,20 @@ export const DEFAULT_STYLE = {
   perCutMs: 0,               // 0 なら元の長さのまま
   photoMs: 2000,             // 写真1枚を映す長さ
   order: 'time',             // time=撮った順 / reverse=新しい順
+  // ログの題。左の真ん中に置く。
+  logName: {
+    show: true,
+    position: 'ml',
+    fontSize: 30,
+    color: '#FFFFFF',
+    box: true,
+    boxColor: '#000000',
+    boxOpacity: 0.4,
+  },
   time: {
     show: true,
     format: 'HH:mm',
-    position: 'br',
+    position: 'mr',
     fontSize: 36,
     color: '#FFFFFF',
     box: true,
@@ -37,8 +47,8 @@ export const DEFAULT_STYLE = {
     boxOpacity: 0.4,
   },
   note: {
-    show: false,
-    position: 'bc',
+    show: true,
+    position: 'mc',
     fontSize: 28,
     color: '#FFFFFF',
     box: true,
@@ -94,6 +104,7 @@ export function normalizeStyle(input) {
     perCutMs: clamp(src.perCutMs, 0, 60000, DEFAULT_STYLE.perCutMs),
     photoMs: clamp(src.photoMs, 300, 15000, DEFAULT_STYLE.photoMs),
     order: pick(src.order, ['time', 'reverse'], DEFAULT_STYLE.order),
+    logName: normalizeText(src.logName, DEFAULT_STYLE.logName),
     time: normalizeText(src.time, DEFAULT_STYLE.time),
     note: normalizeText(src.note, DEFAULT_STYLE.note),
     title: {
@@ -109,6 +120,7 @@ export function normalizeStyle(input) {
   style.width -= style.width % 2;
   style.height -= style.height % 2;
   delete style.note.format;
+  delete style.logName.format;
   return style;
 }
 
@@ -129,11 +141,13 @@ const alpha = (color, opacity) => `${ffColor(color)}@${opacity}`;
 
 export function positionExpr(pos, margin) {
   const x = {
-    tl: `${margin}`, bl: `${margin}`,
-    tc: '(w-tw)/2', bc: '(w-tw)/2',
-    tr: `w-tw-${margin}`, br: `w-tw-${margin}`,
+    tl: `${margin}`, ml: `${margin}`, bl: `${margin}`,
+    tc: '(w-tw)/2', mc: '(w-tw)/2', bc: '(w-tw)/2',
+    tr: `w-tw-${margin}`, mr: `w-tw-${margin}`, br: `w-tw-${margin}`,
   }[pos];
-  const y = pos.startsWith('t') ? `${margin}` : `h-th-${margin}`;
+  // t=上、m=高さの真ん中、b=下
+  const y = pos.startsWith('t') ? `${margin}`
+    : (pos.startsWith('m') ? '(h-th)/2' : `h-th-${margin}`);
   return { x, y };
 }
 

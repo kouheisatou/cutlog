@@ -107,6 +107,8 @@ api.get('/config', (req, res) => {
     oidc: oidcEnabled ? { enabled: true, label: config.auth.oidc.buttonLabel } : { enabled: false },
     vapidPublicKey: config.push.publicKey || null,
     cutSecondsDefault: config.media.cutSecondsDefault,
+    mapTileUrl: config.map.tileUrl,
+    mapCredit: config.map.credit,
     maxUploadMb: config.media.maxUploadMb,
     renderEnabled: config.ffmpeg.enabled,
   });
@@ -310,6 +312,7 @@ api.get('/logs', requireAuth, asyncRoute(async (req, res) => {
   await ensurePrivateLog(req.user.id);
   const rows = await db.all(
     `SELECT l.*, m.role,
+            (SELECT u.display_name FROM users u WHERE u.id = l.owner_id) AS owner_name,
             (SELECT COUNT(*) FROM memberships mm WHERE mm.log_id = l.id) AS member_count,
             (SELECT COUNT(*) FROM cuts c WHERE c.log_id = l.id AND c.deleted_at IS NULL) AS cut_count,
             (SELECT c.id FROM cuts c WHERE c.log_id = l.id AND c.deleted_at IS NULL
@@ -326,6 +329,7 @@ api.get('/logs', requireAuth, asyncRoute(async (req, res) => {
   res.json({
     logs: rows.map((l) => ({
       ...l,
+      ownerName: l.owner_name || null,
       latestCutId: l.latest_cut_id || null,
       latestThumbUrl: l.latest_thumb_key ? `/api/media/${l.latest_cut_id}?thumb=1` : null,
       latestTakenAt: l.latest_taken_at || null,
@@ -422,6 +426,10 @@ function cutRow(c) {
     localDate: c.local_date,
     note: c.note,
     hidden: !!Number(c.hidden || 0),
+    // 撮った場所。分からないときは null のままにする。
+    lat: c.lat ?? null,
+    lon: c.lon ?? null,
+    placeAccuracy: c.place_accuracy ?? null,
     tags: c.tags ? String(c.tags).split(',').filter(Boolean) : [],
     checksum: c.checksum,
     createdAt: c.created_at,
@@ -471,6 +479,13 @@ api.get('/cuts', requireAuth, asyncRoute(async (req, res) => {
   res.json({ cuts, nextBefore: last ? last.taken_at : null, nextBeforeId: last ? last.id : null });
 }));
 
+// 端末から届いた数を、決めた範囲に収まるものだけ通す
+function numOrNull(v, min, max) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < min || n > max) return null;
+  return n;
+}
+
 async function createCut(req, res, logId) {
   if (!req.file) return res.status(400).json({ error: 'ファイルがありません' });
   let meta = {};
@@ -498,8 +513,8 @@ async function createCut(req, res, logId) {
   const tz = Number.isFinite(meta.tzOffset) ? Number(meta.tzOffset) : new Date().getTimezoneOffset();
   await db.run(
     `INSERT INTO cuts (id, log_id, user_id, kind, storage_key, thumb_key, mime, bytes, duration_ms, width, height,
-      facing, source, taken_at, tz_offset, local_date, note, tags, checksum, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      facing, source, taken_at, tz_offset, local_date, note, tags, checksum, lat, lon, place_accuracy, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [cid, logId, req.user.id, kind, key, gotThumb ? thumbKey : null,
       sanitizeMediaType(req.file.mimetype, key), req.file.size,
       meta.durationMs ?? probe.durationMs, probe.width, probe.height,
@@ -507,7 +522,10 @@ async function createCut(req, res, logId) {
       takenAt, tz, localDateOf(takenAt, tz),
       meta.note ? String(meta.note).slice(0, 500) : null,
       Array.isArray(meta.tags) ? meta.tags.join(',').slice(0, 200) : null,
-      checksum, nowIso(), nowIso()],
+      checksum,
+      // 撮った場所。端末が出せたときだけ入る。おかしな値は捨てる。
+      numOrNull(meta.lat, -90, 90), numOrNull(meta.lon, -180, 180), numOrNull(meta.accuracy, 0, 100000),
+      nowIso(), nowIso()],
   );
   const row = await db.get(
     'SELECT c.*, u.display_name FROM cuts c JOIN users u ON u.id = c.user_id WHERE c.id = ?', [cid],

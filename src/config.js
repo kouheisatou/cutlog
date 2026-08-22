@@ -66,6 +66,15 @@ export const config = {
     cookieSecure: bool(process.env.COOKIE_SECURE, false),
   },
 
+  // 地図の絵（タイル）の出どころ。既定は OpenStreetMap。
+  // 外へ出したくないときは MAP_TILE_URL を空にすると、印だけの地図になる。
+  map: {
+    tileUrl: process.env.MAP_TILE_URL !== undefined
+      ? process.env.MAP_TILE_URL
+      : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    credit: process.env.MAP_CREDIT || '© OpenStreetMap contributors',
+  },
+
   media: {
     maxUploadMb: num(process.env.MAX_UPLOAD_MB, 200),
     cutSecondsDefault: num(process.env.CUT_SECONDS_DEFAULT, 2),

@@ -40,7 +40,7 @@ async function writeTextFile(stem, tag, text) {
   return file;
 }
 
-async function normalize(cut, outFile, style, stem, index) {
+async function normalize(cut, outFile, style, stem, index, logName = '') {
   const src = await storage.getPath(cut.storage_key);
   const photoSec = (style.photoMs / 1000).toFixed(3);
   // ffmpegは入力（-i）を出力オプション（-vf など）より先に並べる必要がある。
@@ -68,6 +68,12 @@ async function normalize(cut, outFile, style, stem, index) {
       ...opts,
       margin: sameEdge ? 24 + style.time.fontSize + 28 : 24,
     }));
+  }
+  // ログの題。画面で見えているものと同じ位置に焼き込む。
+  if (style.logName.show && logName) {
+    const f = await writeTextFile(stem, `g${index}`, String(logName).slice(0, 40));
+    textFiles.push(f);
+    filters.push(drawTextFile(f, style.logName, opts));
   }
 
   args.push('-vf', filters.join(','), ...COMMON_OUT);
@@ -125,6 +131,9 @@ async function renderTimeline(payload) {
     if (c) rows.push(c);
   }
   if (!rows.length) throw new Error('カットがありません');
+  // ログの題は、カットが入っているログから引く（画面の見え方と揃えるため）
+  const logRow = await db.get('SELECT name FROM logs WHERE id = ?', [rows[0].log_id]);
+  const logName = logRow?.name || '';
   rows.sort((a, b) => (a.taken_at < b.taken_at ? -1 : 1));
   if (style.order === 'reverse') rows.reverse();
 
@@ -138,7 +147,7 @@ async function renderTimeline(payload) {
   for (const [i, c] of rows.entries()) {
     const part = path.join(paths.tmp, `${stem}_${i}.mp4`);
     // eslint-disable-next-line no-await-in-loop
-    await normalize(c, part, style, stem, i);
+    await normalize(c, part, style, stem, i, logName);
     parts.push(part);
   }
   const listFile = path.join(paths.tmp, `${stem}.txt`);
