@@ -10,7 +10,7 @@
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
 <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
 <link rel="stylesheet" href="/vendor/leaflet/MarkerCluster.css" />
-<link rel="stylesheet" href="/styles.css?v=0.23.0" />
+<link rel="stylesheet" href="/styles.css?v=0.24.0" />
 </head>
 <body>
 <svg class="sprite" aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute">
@@ -175,9 +175,8 @@
 
       <div class="day-bar">
         <div class="spacer"></div>
-        <button id="dayExport" class="mini primary"><svg class="ic sm"><use href="#ic-download"/></svg>書き出し</button>
         <button id="dayShare" class="mini"><svg class="ic sm"><use href="#ic-share"/></svg>共有</button>
-        <button id="dayRender" class="mini"><svg class="ic sm"><use href="#ic-merge"/></svg>動画を保存</button>
+        <button id="dayRender" class="mini primary"><svg class="ic sm"><use href="#ic-download"/></svg>動画を保存</button>
       </div>
 
       <div id="dayList" class="day-list"></div>
@@ -622,6 +621,6 @@
 <!-- 地図は Leaflet に任せる。同梱してあるので外へは取りに行かない。 -->
 <script src="/vendor/leaflet/leaflet.js"></script>
 <script src="/vendor/leaflet/leaflet.markercluster.js"></script>
-<script type="module" src="/app.js?v=0.23.0"></script>
+<script type="module" src="/app.js?v=0.24.0"></script>
 </body>
 </html>

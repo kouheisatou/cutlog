@@ -1043,6 +1043,8 @@ async function openDay(date) {
   $('#dayNextDay').disabled = i < 0 || i >= days.length - 1;
   if (play.items.length) {
     await showClip(0, 0, false);
+    // 待たせずに、裏でその日のぶんを手元へためる
+    cacheDay(play.items);
   } else {
     $('#pvEmpty').hidden = false;
     paintProgress();
@@ -1179,6 +1181,8 @@ const play = {
   photoAt: 0,       // 写真を出し始めた時刻（performance.now）
   photoDone: 0,     // 写真をすでに出した長さ（止めたぶんを足していく）
   front: 'A',       // いま前に出している <video>
+  cache: new Map(), // その日のクリップを手元にためたもの（cutId → blob:）
+  shownId: null,    // いま一覧で印を付けているクリップ
 };
 
 const CLIP_SECONDS_DEFAULT = 2;
@@ -1293,14 +1297,61 @@ function loop() {
   play.raf = requestAnimationFrame(step);
 }
 
+// ★その日のぶんは、先に全部ためておく。
+// 1つ2秒なので、まとめて落としても大した量にならない。
+// 手元に置いてしまえば、クリップの継ぎ目で待たされない。
+async function cacheDay(items) {
+  releaseCache();
+  for (const it of items) {
+    if (it.cut.kind === 'photo') continue;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const res = await fetch(it.cut.url);
+      if (!res.ok) continue;
+      // eslint-disable-next-line no-await-in-loop
+      const blob = await res.blob();
+      play.cache.set(it.cut.id, URL.createObjectURL(blob));
+      // 先頭のぶんが手に入った時点で、いま出しているものを差し替える
+      if (play.items[play.idx]?.cut.id === it.cut.id) swapToCached(it.cut.id);
+      // 次に控えているぶんも、手元のものへ読み直す
+      if (play.items[play.idx + 1]?.cut.id === it.cut.id) preload(play.idx);
+    } catch { /* 取れなかったぶんは、その場で読みに行く */ }
+  }
+}
+
+function releaseCache() {
+  for (const url of play.cache.values()) URL.revokeObjectURL(url);
+  play.cache.clear();
+}
+
+// 手元にためたものが間に合ったら、いま出している <video> をそっと差し替える
+function swapToCached(cutId) {
+  const el = frontEl();
+  if (el.dataset.cutId !== cutId || el.dataset.cached === '1') return;
+  const at = el.currentTime;
+  const wasPlaying = !el.paused;
+  el.dataset.cached = '1';
+  el.src = play.cache.get(cutId);
+  el.load();
+  el.addEventListener('loadedmetadata', () => {
+    el.currentTime = at;
+    if (wasPlaying) el.play().catch(() => {});
+  }, { once: true });
+}
+
+// そのクリップの読み先。ためてあればそちらを使う。
+const srcOf = (cut) => play.cache.get(cut.id) || cut.url;
+
 // 次のクリップを、裏の <video> に先に読ませておく（切れ目を短くするため）
 function preload(i) {
   const nx = play.items[i + 1];
   if (!nx || nx.cut.kind === 'photo') return;
   const b = backEl();
-  if (b.dataset.cutId !== nx.cut.id) {
+  const wantCached = play.cache.has(nx.cut.id) ? '1' : '0';
+  if (b.dataset.cutId !== nx.cut.id || b.dataset.cached !== wantCached) {
     b.dataset.cutId = nx.cut.id;
-    b.src = nx.cut.url;
+    b.dataset.cached = play.cache.has(nx.cut.id) ? '1' : '0';
+    b.src = srcOf(nx.cut);
     b.muted = true;
     b.load();
   }
@@ -1329,7 +1380,8 @@ async function showClip(i, offsetMs = 0, autoplay = play.playing) {
       el = frontEl();
     } else if (el.dataset.cutId !== it.cut.id) {
       el.dataset.cutId = it.cut.id;
-      el.src = it.cut.url;
+      el.dataset.cached = play.cache.has(it.cut.id) ? '1' : '0';
+      el.src = srcOf(it.cut);
       el.load();
     }
     const other = backEl();
@@ -1344,7 +1396,12 @@ async function showClip(i, offsetMs = 0, autoplay = play.playing) {
     if (autoplay) { try { await el.play(); } catch { /* 端末が止めたら手で押してもらう */ } }
   }
   preload(i);
-  renderDayList();
+  // ★一覧を作り直すのは、出しているクリップが変わったときだけ。
+  //   目盛りをつまんでいる間に作り直すと、絵が読み直されてちらつく。
+  if (play.shownId !== it.cut.id) {
+    play.shownId = it.cut.id;
+    renderDayList();
+  }
   paintProgress();
   if (autoplay) { play.playing = true; loop(); }
   paintPlayBtn();
@@ -1414,6 +1471,8 @@ async function prevClip() {
 function stopPlayer() {
   play.playing = false;
   cancelAnimationFrame(play.raf);
+  releaseCache();
+  play.shownId = null;
   for (const k of ['A', 'B']) {
     const v = vidEl(k);
     v.pause();
@@ -2498,7 +2557,6 @@ $('#allAddInput').addEventListener('change', async (ev) => {
 });
 $$('.tab-item').forEach((b) => b.addEventListener('click', () => selectTab(b.dataset.tab)));
 // その日の詳細：書き出し・共有・まとめ動画は、どれもモーダルで中身を選び直してもらう
-$('#dayExport').addEventListener('click', () => openPicker('export', dayIds()));
 $('#dayShare').addEventListener('click', () => openPicker('share', dayIds()));
 $('#dayRender').addEventListener('click', () => openPicker('render', dayIds()));
 $('#pickAll').addEventListener('click', () => setPicks(true));
