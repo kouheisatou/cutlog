@@ -174,3 +174,49 @@ class Screen extends StatelessWidget {
     );
   }
 }
+
+/// CSS: .crumbs — いまどこにいるかを、上から順に並べて出す。
+/// 最後の1つ（いまの場所）だけ濃く、途中は道すじとして薄く置く。
+class Crumbs extends StatelessWidget {
+  const Crumbs({super.key, required this.items, this.onTap});
+
+  final List<String> items;
+  final ValueChanged<int>? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Palette c = colorsOf(context);
+    final Typo t = Typo(c);
+    final List<Widget> out = <Widget>[];
+
+    for (int i = 0; i < items.length; i++) {
+      final bool last = i == items.length - 1;
+      if (i > 0) {
+        // CSS: .crumbs li + li::before { content: "/" }。地の書体・地の大きさのまま。
+        out.add(Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Text('/', style: t.body.copyWith(color: c.hair)),
+        ));
+      }
+      out.add(Flexible(
+        child: GestureDetector(
+          onTap: last || onTap == null ? null : () => onTap!(i),
+          behavior: HitTestBehavior.opaque,
+          child: Text(
+            items[i],
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: last
+                ? t.crumbCurrent
+                : t.crumb.copyWith(
+                    decoration: TextDecoration.underline,
+                    decorationColor: c.hair,
+                  ),
+          ),
+        ),
+      ));
+    }
+
+    return Expanded(child: Row(mainAxisSize: MainAxisSize.min, children: out));
+  }
+}

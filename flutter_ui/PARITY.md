@@ -54,16 +54,31 @@ cd flutter_ui
 | 画面 | 出来 | 置き場所の差 |
 | --- | --- | --- |
 | logs（ログ一覧） | できた | 0.59% |
-| auth（ログイン） | できた | 3.43% |
+| all（カット一覧） | できた | 1.92% |
+| log（カレンダー） | できた | 2.57% |
 | settings（設定） | できた | 2.67% |
-| log（カレンダー） | まだ | — |
-| logset（ログの設定） | まだ | — |
+| auth（ログイン） | できた | 3.43% |
+| logset（ログの設定） | できた | 5.23% |
 | day（その日） | 作り直した（映像＋ドラム） | 対象外 |
-| all（カット一覧） | まだ | — |
+| review（撮影後の確認） | 作った | 対象外 |
 | map（マップ） | まだ | — |
 | capture（撮影） | 下書きあり（`tool/parity/capture_screen.dart.wip`） | — |
-| review（撮影後の確認） | 作った | 対象外 |
 | logs-add / logs-search / all-search / cut（シート） | まだ | — |
+
+## 次にやること（上から順に）
+
+1. **シート4つ**（logs-add / logs-search / all-search / cut）。
+   どれも `.panel`（下からせり上がる白い札）の中身が違うだけ。まず `.panel` の器を
+   `lib/ui/sheet.dart` に作り、4つはその中身として書く。
+   器の寸法: 幅 min(640,100%) / 角 18px 上だけ / 影 `0 -8px 40px rgba(0,0,0,.22)` /
+   余白 s4（≤880px）/ 掴み手 40×4px 角丸 999 を上に中央、下に s3。
+2. **map**。地図そのものは外の部品に任せる（web は Leaflet 同梱）。
+   Flutter では `flutter_map` を足すか、まずピンと件数の帯だけ作って地図は後回しでもよい。
+3. **capture**。`tool/parity/capture_screen.dart.wip` に下書きがある。
+   ただし余白の変数が古い（`s1` などの直書き）ので、`spaceOf(context)` に直してから使う。
+4. **画面のつなぎ込み**。いまは `?shot=` で1枚ずつ出しているだけ。
+   タブと戻るを本当に動かして、行き来できるようにする。
+5. **細かいずれ潰し**。下の「残っている細かいずれ」を参照。
 
 ## 詰まっているところ
 
@@ -73,5 +88,23 @@ cd flutter_ui
 
 ## 残っている細かいずれ
 
+- **logset で行ごとに 5px ほど下へずれていく**（積み上がって最後は 15px ほど）。
+  行の高さか、行間の重なりの計算がどこかで 1 行ぶん多い。まず `shots/probe/logset.json` の
+  `div.panel-row` の y を並べて、どの行から離れ始めるかを見ること。
 - 等幅の字が 0.67px ほど下にずれる（`.log-sub`, タブの名前）。書体の縦の取り方の違い。
+  `tool/parity` に「一番よく合う ずれ」を測る手が要る（下の測り方を参照）。
 - アイコンの線が少し違う。`lib/design/icons.dart` の描き方を詰める。
+- `.check` の行は高さの下限が 32px、行の高さは 1.2。いまの `_Label` は 1.7 のままで低い。
+
+### ずれを数で測る
+
+```python
+from PIL import Image, ImageChops
+a = Image.open('shots/web/logset.png').convert('L')
+b = Image.open('shots/flutter/logset.png').convert('L')
+box = (100, 300, 1100, 360)          # 端末の画素（CSS px × 3）
+best = min(((sum(ImageChops.difference(a.crop(box),
+    b.crop((box[0]+dx, box[1]+dy, box[2]+dx, box[3]+dy))).getdata()), dx, dy)
+    for dy in range(-9, 10) for dx in range(-9, 10)))
+print('ずれ', best[1]/3, best[2]/3, 'CSSpx')
+```

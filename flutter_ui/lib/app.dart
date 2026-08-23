@@ -11,7 +11,9 @@ import 'design/tokens.dart';
 import 'screens/all_screen.dart';
 import 'screens/auth_screen.dart';
 import 'screens/day_screen.dart';
+import 'screens/log_screen.dart';
 import 'screens/logs_screen.dart';
+import 'screens/logset_screen.dart';
 import 'screens/review_screen.dart';
 import 'screens/settings_screen.dart';
 import 'ui/shell.dart';
@@ -67,6 +69,8 @@ class _HostState extends State<_Host> {
   final Api _api = Api();
   List<LogItem>? _logs;
   List<Cut> _cuts = <Cut>[];
+  List<Cut> _logCuts = <Cut>[];        // 見比べで開くログの中身
+  Map<String, dynamic> _logDetail = <String, dynamic>{};
   Me? _me;
   Map<String, dynamic> _config = <String, dynamic>{};
   String? _error;
@@ -94,10 +98,29 @@ class _HostState extends State<_Host> {
         _config = got[2]! as Map<String, dynamic>;
         _cuts = got[3]! as List<Cut>;
       });
+      // カレンダーは1つのログの中身で組む。見比べでは「まいにち」を開く。
+      final LogItem target = _logs!.firstWhere(
+        (LogItem l) => l.name == 'まいにち',
+        orElse: () => _logs!.firstWhere((LogItem l) => l.cutCount > 0, orElse: () => _logs!.first),
+      );
+      final List<Cut> inLog = await _api.cutsOfLog(target.id);
+      final Map<String, dynamic> detail = await _api.logDetail(target.id);
+      if (mounted) {
+        setState(() {
+          _logCuts = inLog;
+          _logDetail = detail;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     }
   }
+
+  /// 見比べで開くログ。中身があるものを選ぶ。
+  LogItem get _target => _logs!.firstWhere(
+        (LogItem l) => l.name == 'まいにち',
+        orElse: () => _logs!.firstWhere((LogItem l) => l.cutCount > 0, orElse: () => _logs!.first),
+      );
 
   /// いちばん新しいカットの日。
   String get _newestDay => _cuts.isEmpty ? '' : _cuts.first.localDate;
@@ -128,6 +151,25 @@ class _HostState extends State<_Host> {
             pushHint: _pushHint,
           ),
         );
+      case 'log':
+        return Screen(tab: 'logs', child: LogScreen(log: _target, cuts: _logCuts));
+      case 'logset':
+        {
+          final LogItem target = _target;
+          final List<dynamic> raw = (_logDetail['members'] as List<dynamic>?) ?? <dynamic>[];
+          return LogSetScreen(
+            log: LogItem.fromJson(<String, dynamic>{
+              ...(_logDetail['log'] as Map<String, dynamic>? ?? <String, dynamic>{}),
+              'cut_count': target.cutCount,
+            }),
+            members: raw
+                .map((dynamic m) => <Object>[
+                      (m as Map<String, dynamic>)['display_name'] as String? ?? '',
+                      m['role'] == 'owner',
+                    ])
+                .toList(),
+          );
+        }
       case 'day':
         {
           // いちばん新しい日を出す。見比べのときに中身が空だと形が分からない。
