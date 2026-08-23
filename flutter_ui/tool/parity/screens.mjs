@@ -84,6 +84,8 @@ export const SCREENS = [
   {
     name: 'map',
     title: 'マップ',
+    // 地図の瓦は外から取りに行く。届くまでの待ちは、こちらのほうが長い。
+    flutterWaitMs: 7000,
     steps: [
       { click: '.tab-item[data-tab="map"]' },
       { wait: '#mapScreen .map-host' },

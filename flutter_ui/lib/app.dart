@@ -13,6 +13,7 @@ import 'screens/capture_screen.dart';
 import 'screens/day_screen.dart';
 import 'screens/log_screen.dart';
 import 'screens/logs_screen.dart';
+import 'screens/map_screen.dart';
 import 'screens/logset_screen.dart';
 import 'screens/review_screen.dart';
 import 'screens/settings_screen.dart';
@@ -245,7 +246,16 @@ class _HostState extends State<_Host> {
         return Screen(
           tab: 'map',
           onTab: _selectTab,
-          child: const _Note('マップはこれから'),
+          child: Padding(
+            // CSS: .body.full { padding: 0 0 calc(57px + safe) } — 地図は下の帯以外を全部使う
+            padding: EdgeInsets.only(bottom: 57 + MediaQuery.paddingOf(context).bottom),
+            child: MapScreen(
+              cuts: _cuts,
+              mediaUrl: _api.mediaUrl,
+              tileUrl: (_config['mapTileUrl'] as String?) ??
+                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            ),
+          ),
         );
 
       case 'log':

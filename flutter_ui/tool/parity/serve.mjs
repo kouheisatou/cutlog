@@ -55,9 +55,8 @@ createServer(async (req, res) => {
     res.writeHead(200, {
       'content-type': TYPES[extname(file)] || 'application/octet-stream',
       'cache-control': 'no-store',
-      // CanvasKit を wasm のまま動かすのに要る
-      'cross-origin-opener-policy': 'same-origin',
-      'cross-origin-embedder-policy': 'credentialless',
+      // ★ COOP/COEP は付けない。付けると、地図の瓦のように
+      //   よそから取ってくるものが軒並み弾かれる（Flutter は無くても動く）。
     });
     createReadStream(file).pipe(res);
   } catch (e) {
