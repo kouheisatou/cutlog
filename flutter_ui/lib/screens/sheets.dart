@@ -117,6 +117,81 @@ Future<void> openSearchSheet(
   );
 }
 
+/// カットの移動先を選ぶ。
+/// ★ 移動すると、元のログで作った共有リンクからは外れる。取り返しがつくとはいえ
+///   見えなくなる人が出るので、そのことを先に伝えてから選ばせる。
+Future<void> openMoveSheet(
+  BuildContext context, {
+  required List<LogItem> logs,
+  required String fromLogId,
+  required Future<String?> Function(String logId) onMove,
+}) {
+  return openSheet<void>(
+    context,
+    children: <Widget>[
+      _Body(
+        builder: (BuildContext context, _Report say) {
+          final Palette c = colorsOf(context);
+          final Space sp = spaceOf(context);
+          return CssColumn(<Block>[
+            Block(const SheetTitle('カットの移動'), bottom: sp.s1),
+            Block(
+              Text('移動したカットは、移動元のログで作成した共有リンクから外れます。',
+                  style: Typo(c).small),
+              bottom: sp.s3,
+            ),
+            for (final LogItem l in logs)
+              if (l.id != fromLogId)
+                Block(
+                  _MoveRow(log: l, onTap: () => say(context, () => onMove(l.id))),
+                  top: 0,
+                  bottom: 0,
+                ),
+          ], outer: false);
+        },
+      ),
+    ],
+  );
+}
+
+/// CSS: .move-row — 名前だけの1行。押すとそこへ移る。
+class _MoveRow extends StatelessWidget {
+  const _MoveRow({required this.log, required this.onTap});
+
+  final LogItem log;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Palette c = colorsOf(context);
+    return Semantics(
+      button: true,
+      label: log.name,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          // CSS: .move-row { padding: 8px 0; font-size: 14px }
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          constraints: const BoxConstraints(minHeight: 44),
+          alignment: Alignment.centerLeft,
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(log.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Typo(c).body.copyWith(fontSize: 14)),
+              ),
+              Text('${log.cutCount}カット', style: Typo(c).small),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// カットの詳細（どの画面からも、同じ札で開く）
 /// ★ 詳しい値（大きさ・場所・ID など）は右上の調整から開く。ここでは畳んでおく。
 Future<void> openCutSheet(
@@ -126,6 +201,7 @@ Future<void> openCutSheet(
   required Future<String?> Function() onDelete,
   required Future<String?> Function(String body) onComment,
   required Future<String?> Function(String emoji) onReact,
+  VoidCallback? onMove,
   List<String> myReactions = const <String>[],
 }) {
   final TextEditingController body = TextEditingController();
@@ -189,7 +265,7 @@ Future<void> openCutSheet(
               Row(children: <Widget>[
                 const TextBtn('ダウンロード', icon: 'download'),
                 SizedBox(width: sp.s3),
-                const TextBtn('移動', icon: 'move'),
+                TextBtn('移動', icon: 'move', onTap: onMove),
                 SizedBox(width: sp.s3),
                 TextBtn('削除', icon: 'trash', danger: true, onTap: () async {
                   final bool yes = await confirm(context, 'このカットを削除しますか？', '削除');

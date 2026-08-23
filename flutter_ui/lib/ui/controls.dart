@@ -228,23 +228,32 @@ class Avatar extends StatelessWidget {
 
 /// CSS: .panel-row select — 選ぶところ。下の1本だけで示し、右に小さな印を置く。
 class Picker extends StatelessWidget {
-  const Picker({super.key, required this.value, required this.width});
+  const Picker({super.key, required this.value, required this.width, this.onTap});
 
   final String value;
   final double width;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final Palette c = colorsOf(context);
 
-    return Container(
-      width: width,
-      height: 35,
-      alignment: Alignment.centerLeft,
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: c.hair)),
+    return Semantics(
+      button: true,
+      label: value,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          width: width,
+          height: 35,
+          alignment: Alignment.centerLeft,
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: c.hair)),
+          ),
+          child: Text(value, style: Typo(c).panelInput, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
       ),
-      child: Text(value, style: Typo(c).panelInput),
     );
   }
 }

@@ -86,6 +86,7 @@ class _HostState extends State<_Host> {
   List<LogItem>? _logs;
   List<Cut> _cuts = <Cut>[];              // ログをまたいだ全部
   Me? _me;
+  Reminder _reminder = const Reminder();
   Map<String, dynamic> _config = <String, dynamic>{};
   String? _error;
   bool _needAuth = false;
@@ -119,12 +120,14 @@ class _HostState extends State<_Host> {
     await _api.restore();
     try {
       final List<Object?> got = await Future.wait(<Future<Object?>>[
-        _api.logs(), _api.me(), _api.config(), _api.allCuts(),
+        _api.logs(), _api.meRaw(), _api.config(), _api.allCuts(),
       ]);
       if (!mounted) return;
+      final Map<String, dynamic> mine = got[1]! as Map<String, dynamic>;
       setState(() {
         _logs = got[0]! as List<LogItem>;
-        _me = got[1] as Me?;
+        _me = Me.fromJson(mine['user'] as Map<String, dynamic>);
+        _reminder = Reminder.fromJson(mine['reminder'] as Map<String, dynamic>?);
         _config = got[2]! as Map<String, dynamic>;
         _cuts = got[3]! as List<Cut>;
       });
@@ -249,6 +252,18 @@ class _HostState extends State<_Host> {
         },
         onComment: (String body) => _api.addComment(cut.id, body),
         onReact: (String emoji) => _api.react(cut.id, emoji),
+        onMove: () => openMoveSheet(
+          context,
+          logs: _logs!,
+          fromLogId: cut.logId,
+          onMove: (String logId) async {
+            final String? bad = await _api.moveCut(cut.id, logId);
+            if (bad != null) return bad;
+            await _reload();
+            if (context.mounted) Navigator.of(context).popUntil((Route<dynamic> r) => r.isFirst);
+            return null;
+          },
+        ),
       );
 
   /// 撮る → 確かめる → 残す。
@@ -406,6 +421,13 @@ class _HostState extends State<_Host> {
             builder: (BuildContext context) => SettingsScreen(
               me: _me ?? Me(id: '', username: '', displayName: ''),
               pushHint: _pushHint,
+              reminder: _reminder,
+              onSaveReminder: (Reminder r) async {
+                final String? bad = await _api.saveReminder(r);
+                if (bad == null && mounted) setState(() => _reminder = r);
+                return bad;
+              },
+              onTestPush: _api.testPush,
               onLogout: () async {
                 final bool yes = await confirm(context, 'ログアウトしますか？', 'ログアウト');
                 if (!yes) return;
