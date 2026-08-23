@@ -3,12 +3,18 @@ import UIKit
 
 /// 撮影画面。Web の「カメラ」タブから呼ばれ、録って、上げて、閉じる。
 ///
+/// 見た目は Web の撮影画面（web/index.html の #captureDialog）をなぞっている。
+/// 同じアプリの同じ操作なので、殻の中と外で当たりが変わらない方がよいためである。
+///   上： × ／ 記録先 ／ 前後の切り替え
+///   下： 倍率の目印 ／ まるいシャッター（外周が一周したら録り終わり） ／ 「動画」
+///
 /// 横向きで撮るのは、まとめ動画を横で作るためと、
 /// シネマティック手ぶれ補正が横構図を前提に効きやすいためである。
 final class CaptureViewController: UIViewController {
 
     enum Outcome {
-        case success
+        /// 撮って上げ終わった。Web を撮った日の画面へ連れて行くために、作られたカットを渡す。
+        case success(CutUploader.Created)
         case cancelled
         case failure(String)
     }
@@ -20,14 +26,24 @@ final class CaptureViewController: UIViewController {
     private let location = LocationProvider()
 
     private var previewLayer: AVCaptureVideoPreviewLayer?
-    private let shutter = UIButton(type: .custom)
+
+    // 上
+    private let topBar = GradientView(direction: .down)
     private let closeButton = UIButton(type: .system)
-    private let statusLabel = UILabel()
+    private let destLabel = UILabel()
+    private let flipButton = UIButton(type: .system)
+
+    // 下
+    private let bottomBar = GradientView(direction: .up)
+    private let zoomRow = UIStackView()
+    private let shutter = ShutterButton()
     private let stabilizationLabel = UILabel()
-    private let countdownLabel = UILabel()
+    private let kindLabel = UILabel()
+
+    // 真ん中
+    private let hintLabel = PaddedLabel()
     private let busyView = UIActivityIndicatorView(style: .large)
 
-    private var countdownTimer: Timer?
     private var recordingStartedAt: Date?
     private var didFinish = false
     private var didStartSetup = false
@@ -71,10 +87,12 @@ final class CaptureViewController: UIViewController {
                 // 画面より長生きして Web の上に取り残されてしまうためである。
                 location.start()
                 attachPreview()
-                stabilizationLabel.text = "手ぶれ補正: \(camera.stabilizationLabel)"
-                statusLabel.text = "\(Int(request.seconds)) 秒撮ります"
+                buildZoomStops()
+                updateStabilizationLabel()
+                showOpeningHints()
                 shutter.isEnabled = true
-                shutter.alpha = 1
+                flipButton.isEnabled = true
+                UIView.animate(withDuration: 0.2) { self.shutter.alpha = 1 }
             case .failure(let error):
                 complete(.failure(error.localizedDescription))
             }
@@ -83,7 +101,6 @@ final class CaptureViewController: UIViewController {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        countdownTimer?.invalidate()
         location.stop()
         camera.stop()
     }
@@ -103,72 +120,164 @@ final class CaptureViewController: UIViewController {
     // MARK: - 画面
 
     private func buildUI() {
-        statusLabel.textColor = .white
-        statusLabel.font = .systemFont(ofSize: 15, weight: .medium)
-        statusLabel.text = "カメラを準備しています…"
+        // ── 上のバー ──────────────────────────────────
+        // Web と同じく、黒からの薄いぼかしを敷いてから中身を置く。
+        // 明るい景色の上でも白い字が読めるようにするため。
+        closeButton.setImage(UIImage(systemName: "xmark", withConfiguration: Self.iconConfig), for: .normal)
+        closeButton.tintColor = .white
+        closeButton.addTarget(self, action: #selector(tapClose), for: .touchUpInside)
+        closeButton.accessibilityLabel = "閉じる"
 
-        // 効いている手ぶれ補正を画面に出す。
-        // このアプリの目的そのものなので、動いていることを目で確かめられるようにした。
-        stabilizationLabel.textColor = UIColor.white.withAlphaComponent(0.75)
-        stabilizationLabel.font = .systemFont(ofSize: 12, weight: .regular)
-        stabilizationLabel.text = "手ぶれ補正: 確認中"
+        destLabel.textColor = UIColor.white.withAlphaComponent(0.85)
+        destLabel.font = .systemFont(ofSize: 12, weight: .regular)
+        destLabel.text = request.logName.isEmpty ? "" : "記録先 \(request.logName)"
+        destLabel.lineBreakMode = .byTruncatingTail
 
-        let info = UIStackView(arrangedSubviews: [statusLabel, stabilizationLabel])
-        info.axis = .vertical
-        info.spacing = 2
-        info.alignment = .center
-        info.translatesAutoresizingMaskIntoConstraints = false
+        flipButton.setImage(
+            UIImage(systemName: "arrow.triangle.2.circlepath.camera", withConfiguration: Self.iconConfig),
+            for: .normal)
+        flipButton.tintColor = .white
+        flipButton.isEnabled = false
+        flipButton.addTarget(self, action: #selector(tapFlip), for: .touchUpInside)
+        flipButton.accessibilityLabel = "前と後ろを切り替える"
 
-        countdownLabel.textColor = .white
-        countdownLabel.font = .monospacedDigitSystemFont(ofSize: 44, weight: .semibold)
-        countdownLabel.textAlignment = .center
-        countdownLabel.alpha = 0
-        countdownLabel.translatesAutoresizingMaskIntoConstraints = false
+        let top = UIStackView(arrangedSubviews: [closeButton, destLabel, UIView(), flipButton])
+        top.axis = .horizontal
+        top.alignment = .center
+        top.spacing = 10
+        top.translatesAutoresizingMaskIntoConstraints = false
 
-        shutter.backgroundColor = .systemRed
-        shutter.layer.cornerRadius = 36
-        shutter.layer.borderWidth = 4
-        shutter.layer.borderColor = UIColor.white.cgColor
+        // ── 下のバー ──────────────────────────────────
+        zoomRow.axis = .horizontal
+        zoomRow.spacing = 6
+        zoomRow.alignment = .center
+
         shutter.isEnabled = false
         shutter.alpha = 0.4
-        shutter.translatesAutoresizingMaskIntoConstraints = false
         shutter.addTarget(self, action: #selector(tapShutter), for: .touchUpInside)
-        shutter.accessibilityLabel = "録画を始める"
+        shutter.accessibilityLabel = "撮る"
 
-        closeButton.setImage(UIImage(systemName: "xmark"), for: .normal)
-        closeButton.tintColor = .white
-        closeButton.translatesAutoresizingMaskIntoConstraints = false
-        closeButton.addTarget(self, action: #selector(tapClose), for: .touchUpInside)
-        closeButton.accessibilityLabel = "やめる"
+        // 効いている手ぶれ補正を画面に出す。
+        // 端末の補正を使うことがこのアプリの目的なので、目で確かめられるようにした。
+        stabilizationLabel.textColor = UIColor.white.withAlphaComponent(0.7)
+        stabilizationLabel.font = .systemFont(ofSize: 10, weight: .regular)
+        stabilizationLabel.numberOfLines = 2
+        stabilizationLabel.text = "手ぶれ補正\n確認中"
+
+        // Web の右下にある「動画」。撮れるものが動画だけであることを示す。
+        kindLabel.textColor = UIColor.white.withAlphaComponent(0.55)
+        kindLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        kindLabel.text = "動画"
+        kindLabel.textAlignment = .right
+
+        // 左・中・右で幅を等しくして、シャッターを画面のちょうど真ん中に置く。
+        // 幅を成り行きにするとシャッターが左右に寄って、構えたときに指の位置が定まらない。
+        let leftSlot = UIView()
+        let rightSlot = UIView()
+        [stabilizationLabel, kindLabel].forEach { $0.translatesAutoresizingMaskIntoConstraints = false }
+        leftSlot.addSubview(stabilizationLabel)
+        rightSlot.addSubview(kindLabel)
+
+        let row = UIStackView(arrangedSubviews: [leftSlot, shutter, rightSlot])
+        row.axis = .horizontal
+        row.alignment = .center
+        row.distribution = .fill
+
+        let bottom = UIStackView(arrangedSubviews: [zoomRow, row])
+        bottom.axis = .vertical
+        bottom.alignment = .center
+        bottom.spacing = 10
+        bottom.translatesAutoresizingMaskIntoConstraints = false
+
+        // ── 真ん中 ────────────────────────────────────
+        hintLabel.textColor = .white
+        hintLabel.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        hintLabel.font = .systemFont(ofSize: 11)
+        hintLabel.textAlignment = .center
+        hintLabel.layer.cornerRadius = 12
+        hintLabel.clipsToBounds = true
+        hintLabel.text = "カメラを準備しています…"
+        hintLabel.translatesAutoresizingMaskIntoConstraints = false
 
         busyView.color = .white
         busyView.hidesWhenStopped = true
         busyView.translatesAutoresizingMaskIntoConstraints = false
 
-        [info, countdownLabel, shutter, closeButton, busyView].forEach(view.addSubview)
+        [topBar, bottomBar, hintLabel, busyView].forEach(view.addSubview)
+        topBar.addSubview(top)
+        bottomBar.addSubview(bottom)
 
         let guide = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
-            info.centerXAnchor.constraint(equalTo: guide.centerXAnchor),
-            info.topAnchor.constraint(equalTo: guide.topAnchor, constant: 12),
+            // 帯そのものは画面の端まで伸ばし、中身だけを安全な範囲に収める。
+            // こうしないと、帯の切れ目がノッチの脇に浮いて見える。
+            topBar.topAnchor.constraint(equalTo: view.topAnchor),
+            topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            topBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            topBar.bottomAnchor.constraint(equalTo: top.bottomAnchor, constant: 14),
 
-            countdownLabel.centerXAnchor.constraint(equalTo: guide.centerXAnchor),
-            countdownLabel.centerYAnchor.constraint(equalTo: guide.centerYAnchor),
-
-            // 横向きなので、シャッターは右端の中央に置く（親指が届く位置）
-            shutter.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -24),
-            shutter.centerYAnchor.constraint(equalTo: guide.centerYAnchor),
-            shutter.widthAnchor.constraint(equalToConstant: 72),
-            shutter.heightAnchor.constraint(equalToConstant: 72),
-
-            closeButton.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 20),
-            closeButton.topAnchor.constraint(equalTo: guide.topAnchor, constant: 12),
+            top.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 16),
+            top.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -16),
+            top.topAnchor.constraint(equalTo: guide.topAnchor, constant: 8),
             closeButton.widthAnchor.constraint(equalToConstant: 44),
             closeButton.heightAnchor.constraint(equalToConstant: 44),
+            flipButton.widthAnchor.constraint(equalToConstant: 44),
+            flipButton.heightAnchor.constraint(equalToConstant: 44),
+
+            bottomBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            bottomBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            bottomBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            bottomBar.topAnchor.constraint(equalTo: bottom.topAnchor, constant: -14),
+
+            bottom.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 16),
+            bottom.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -16),
+            bottom.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -10),
+            row.widthAnchor.constraint(equalTo: bottom.widthAnchor),
+            leftSlot.widthAnchor.constraint(equalTo: rightSlot.widthAnchor),
+            leftSlot.heightAnchor.constraint(equalTo: shutter.heightAnchor),
+
+            stabilizationLabel.leadingAnchor.constraint(equalTo: leftSlot.leadingAnchor),
+            stabilizationLabel.centerYAnchor.constraint(equalTo: leftSlot.centerYAnchor),
+            stabilizationLabel.trailingAnchor.constraint(lessThanOrEqualTo: leftSlot.trailingAnchor, constant: -8),
+            kindLabel.trailingAnchor.constraint(equalTo: rightSlot.trailingAnchor),
+            kindLabel.centerYAnchor.constraint(equalTo: rightSlot.centerYAnchor),
+
+            hintLabel.centerXAnchor.constraint(equalTo: guide.centerXAnchor),
+            hintLabel.centerYAnchor.constraint(equalTo: guide.centerYAnchor),
+            hintLabel.heightAnchor.constraint(equalToConstant: 24),
 
             busyView.centerXAnchor.constraint(equalTo: guide.centerXAnchor),
             busyView.centerYAnchor.constraint(equalTo: guide.centerYAnchor),
         ])
+    }
+
+    private static let iconConfig = UIImage.SymbolConfiguration(pointSize: 17, weight: .medium)
+
+    /// 倍率の目印。Web の .zoom-stops と同じく、押すとその倍率に飛ぶ粒を並べる。
+    private func buildZoomStops() {
+        zoomRow.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        let stops = camera.zoomStops
+        guard stops.count > 1 else { return }
+        let base = camera.zoomBase
+        for stop in stops {
+            let shown = stop / base
+            let button = ZoomStopButton()
+            // 0.5× のように小数が要るものだけ小数で出す
+            button.setTitle(shown < 1 || shown != shown.rounded()
+                            ? String(format: "%.1f×", shown) : String(format: "%.0f×", shown),
+                            for: .normal)
+            button.factor = stop
+            button.addTarget(self, action: #selector(tapZoomStop(_:)), for: .touchUpInside)
+            zoomRow.addArrangedSubview(button)
+        }
+        markActiveZoom()
+    }
+
+    private func markActiveZoom() {
+        let now = camera.zoomFactor
+        for case let b as ZoomStopButton in zoomRow.arrangedSubviews {
+            b.isOn = abs(b.factor - now) < 0.05
+        }
     }
 
     private func attachPreview() {
@@ -199,6 +308,32 @@ final class CaptureViewController: UIViewController {
         }
     }
 
+    /// 最初に出す短い注意書き。
+    ///
+    /// ★手ぶれ補正の断りを先に出すのは、これが実際に迷うところだからである。
+    ///   iOS の補正は録画される映像にだけ効き、この画面（プレビュー）には乗らない。
+    ///   知らないと「効いていない」と見えてしまう。
+    private func showOpeningHints() {
+        if camera.activeStabilizationName != "なし" {
+            hintLabel.text = "手ぶれ補正は録画された映像にだけ効きます"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+                guard let self, !camera.isRecording else { return }
+                UIView.transition(with: hintLabel, duration: 0.2, options: .transitionCrossDissolve) {
+                    self.hintLabel.text = "横向きの範囲で記録されます"
+                }
+            }
+        } else {
+            hintLabel.text = "横向きの範囲で記録されます"
+        }
+    }
+
+    /// 効いている補正を出す。
+    /// ★プレビューには補正が乗らないので、画を見ても効いているかは分からない。
+    ///   ここの表示だけが手がかりになる。
+    private func updateStabilizationLabel() {
+        stabilizationLabel.text = "手ぶれ補正\n\(camera.activeStabilizationName)"
+    }
+
     // MARK: - 操作
 
     @objc private func tapClose() {
@@ -212,19 +347,37 @@ final class CaptureViewController: UIViewController {
         complete(.cancelled)
     }
 
+    @objc private func tapFlip() {
+        guard !camera.isRecording else { return }
+        flipButton.isEnabled = false
+        camera.flip { [weak self] in
+            guard let self else { return }
+            flipButton.isEnabled = true
+            buildZoomStops()
+            updateStabilizationLabel()
+        }
+    }
+
+    @objc private func tapZoomStop(_ sender: ZoomStopButton) {
+        camera.setZoom(sender.factor)
+        markActiveZoom()
+    }
+
     @objc private func tapShutter() {
         guard !camera.isRecording else { return }
         shutter.isEnabled = false
-        shutter.alpha = 0.4
         closeButton.isHidden = true
+        flipButton.isHidden = true
+        hintLabel.isHidden = true
         recordingStartedAt = Date()
-        statusLabel.text = "録画中"
-        startCountdown()
+        // 外周が request.seconds かけて一周する。残り時間はこれで分かるので、数字は出さない。
+        shutter.startRecording(seconds: request.seconds)
 
         camera.startRecording(seconds: request.seconds) { [weak self] result in
             guard let self else { return }
-            countdownTimer?.invalidate()
-            countdownLabel.alpha = 0
+            shutter.stopRecording()
+            // 録画が始まって初めて「実際に効いている」補正が分かる
+            updateStabilizationLabel()
             switch result {
             case .success(let url):
                 upload(url)
@@ -234,26 +387,11 @@ final class CaptureViewController: UIViewController {
         }
     }
 
-    private func startCountdown() {
-        countdownLabel.alpha = 1
-        let end = Date().addingTimeInterval(request.seconds)
-        countdownLabel.text = String(format: "%.1f", request.seconds)
-        countdownTimer?.invalidate()
-        countdownTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] timer in
-            guard let self else { return }
-            let left = max(0, end.timeIntervalSinceNow)
-            countdownLabel.text = String(format: "%.1f", left)
-            // 録画が始まって初めて「実際に効いている」補正が分かる。
-            // 目的そのものなので、指定した値ではなく効いている値を出す。
-            stabilizationLabel.text = "手ぶれ補正: \(camera.activeStabilizationName)"
-            if left <= 0 { timer.invalidate() }
-        }
-    }
-
     // MARK: - アップロード
 
     private func upload(_ fileURL: URL) {
-        statusLabel.text = "送信中…"
+        hintLabel.isHidden = false
+        hintLabel.text = "送信中…"
         busyView.startAnimating()
         shutter.isHidden = true
 
@@ -263,8 +401,7 @@ final class CaptureViewController: UIViewController {
             durationMs: durationMs,
             takenAt: recordingStartedAt ?? Date(),
             tzOffset: request.tzOffset,
-            // 背面カメラで撮っているので environment 固定。Web 側の値と揃える。
-            facing: "environment",
+            facing: camera.facing,
             place: location.place
         )
 
@@ -274,8 +411,8 @@ final class CaptureViewController: UIViewController {
             guard let self else { return }
             busyView.stopAnimating()
             switch result {
-            case .success:
-                complete(.success)
+            case .success(let created):
+                complete(.success(created))
             case .failure(let error):
                 complete(.failure(error.localizedDescription))
             }
@@ -288,9 +425,171 @@ final class CaptureViewController: UIViewController {
     private func complete(_ outcome: Outcome) {
         guard !didFinish else { return }
         didFinish = true
-        countdownTimer?.invalidate()
+        shutter.stopRecording()
         camera.stop()
         location.stop()
         finish(outcome)
+    }
+}
+
+// MARK: - 部品
+
+/// Web の .shutter と同じ見た目。
+/// 白い輪の中に赤い丸があり、録っているあいだは丸が角丸の四角に縮み、
+/// 外周が 1 カットぶんの長さでちょうど一周する。
+private final class ShutterButton: UIButton {
+    private let track = CAShapeLayer()
+    private let run = CAShapeLayer()
+    private let dot = UIView()
+
+    private static let size: CGFloat = 78
+    private static let dotSize: CGFloat = 58
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: Self.size),
+            heightAnchor.constraint(equalToConstant: Self.size),
+        ])
+
+        for shape in [track, run] {
+            shape.fillColor = nil
+            shape.lineWidth = 5
+            shape.lineCap = .round
+            layer.addSublayer(shape)
+        }
+        track.strokeColor = UIColor.white.withAlphaComponent(0.32).cgColor
+        run.strokeColor = UIColor.white.cgColor
+        run.strokeEnd = 0
+
+        dot.backgroundColor = UIColor(red: 0.898, green: 0.282, blue: 0.302, alpha: 1)  // #e5484d
+        dot.layer.cornerRadius = Self.dotSize / 2
+        dot.isUserInteractionEnabled = false
+        dot.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(dot)
+        NSLayoutConstraint.activate([
+            dot.centerXAnchor.constraint(equalTo: centerXAnchor),
+            dot.centerYAnchor.constraint(equalTo: centerYAnchor),
+            dotWidth, dotHeight,
+        ])
+    }
+
+    private lazy var dotWidth = dot.widthAnchor.constraint(equalToConstant: Self.dotSize)
+    private lazy var dotHeight = dot.heightAnchor.constraint(equalToConstant: Self.dotSize)
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let inset = run.lineWidth / 2
+        let rect = bounds.insetBy(dx: inset, dy: inset)
+        // 12 時から時計回りに描く
+        let path = UIBezierPath(
+            arcCenter: CGPoint(x: bounds.midX, y: bounds.midY),
+            radius: rect.width / 2,
+            startAngle: -.pi / 2, endAngle: .pi * 1.5, clockwise: true
+        ).cgPath
+        track.path = path
+        run.path = path
+        track.frame = bounds
+        run.frame = bounds
+    }
+
+    func startRecording(seconds: Double) {
+        let shrink = CABasicAnimation(keyPath: "strokeEnd")
+        shrink.fromValue = 0
+        shrink.toValue = 1
+        shrink.duration = seconds
+        shrink.fillMode = .forwards
+        shrink.isRemovedOnCompletion = false
+        run.add(shrink, forKey: "run")
+
+        dotWidth.constant = 26
+        dotHeight.constant = 26
+        UIView.animate(withDuration: 0.16) {
+            self.dot.layer.cornerRadius = 6
+            self.layoutIfNeeded()
+        }
+    }
+
+    func stopRecording() {
+        run.removeAnimation(forKey: "run")
+        run.strokeEnd = 0
+        dotWidth.constant = Self.dotSize
+        dotHeight.constant = Self.dotSize
+        UIView.animate(withDuration: 0.16) {
+            self.dot.layer.cornerRadius = Self.dotSize / 2
+            self.layoutIfNeeded()
+        }
+    }
+
+    override var isEnabled: Bool {
+        didSet { alpha = isEnabled ? 1 : 0.4 }
+    }
+}
+
+/// Web の .zoom-stop と同じ、丸い小さな倍率の粒。
+private final class ZoomStopButton: UIButton {
+    var factor: CGFloat = 1
+    var isOn = false {
+        didSet {
+            backgroundColor = isOn ? .white : UIColor.black.withAlphaComponent(0.5)
+            setTitleColor(isOn ? .black : .white, for: .normal)
+        }
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        titleLabel?.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+        contentEdgeInsets = UIEdgeInsets(top: 0, left: 8, bottom: 0, right: 8)
+        layer.cornerRadius = 14
+        clipsToBounds = true
+        isOn = false
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: 28),
+            widthAnchor.constraint(greaterThanOrEqualToConstant: 40),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("not used") }
+}
+
+/// 上下の帯。Web と同じ、黒からの薄いぼかし。
+/// 明るい景色を撮っているときでも、白い字とアイコンが読めるようにするためのもの。
+private final class GradientView: UIView {
+    enum Direction { case up, down }
+
+    override class var layerClass: AnyClass { CAGradientLayer.self }
+
+    init(direction: Direction) {
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        isUserInteractionEnabled = true
+        guard let gradient = layer as? CAGradientLayer else { return }
+        let dark = UIColor.black.withAlphaComponent(direction == .down ? 0.55 : 0.6).cgColor
+        let clear = UIColor.black.withAlphaComponent(0).cgColor
+        gradient.colors = direction == .down ? [dark, clear] : [clear, dark]
+        gradient.startPoint = CGPoint(x: 0.5, y: 0)
+        gradient.endPoint = CGPoint(x: 0.5, y: 1)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("not used") }
+}
+
+/// 左右に余白のある丸い注意書き。Web の .cam-hint に当たる。
+private final class PaddedLabel: UILabel {
+    private let inset = UIEdgeInsets(top: 0, left: 14, bottom: 0, right: 14)
+
+    override func drawText(in rect: CGRect) {
+        super.drawText(in: rect.inset(by: inset))
+    }
+
+    override var intrinsicContentSize: CGSize {
+        let s = super.intrinsicContentSize
+        return CGSize(width: s.width + inset.left + inset.right, height: s.height)
     }
 }

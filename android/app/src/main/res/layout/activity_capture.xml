@@ -1,6 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- プレビュー全面。操作は右端に寄せてある（横持ちで親指が届く位置） -->
+<!--
+  撮影画面。見た目は Web の撮影画面（web/index.html の #captureDialog）をなぞっている。
+  同じアプリの同じ操作なので、殻の中と外で当たりが変わらない方がよいためである。
+    上： × ／ 記録先 ／ 前後の切り替え
+    下： 倍率の目印 ／ まるいシャッター（外周が一周したら録り終わり） ／「動画」
+
+  端末のバーの逃げは CaptureActivity から padding で入れる（切り欠きの寸法は端末ごとに違うため）。
+-->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/captureRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
@@ -10,35 +19,126 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!-- ── 上 ────────────────────────────────────────── -->
+    <LinearLayout
+        android:id="@+id/topBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:background="@drawable/capture_scrim_top"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="14dp">
+
+        <ImageButton
+            android:id="@+id/closeButton"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/capture_cancel"
+            android:src="@drawable/ic_capture_close" />
+
+        <TextView
+            android:id="@+id/destText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:singleLine="true"
+            android:textColor="#D9FFFFFF"
+            android:textSize="12sp"
+            tools:text="記録先 マイログ" />
+
+        <ImageButton
+            android:id="@+id/flipButton"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/capture_flip"
+            android:src="@drawable/ic_capture_flip" />
+    </LinearLayout>
+
+    <!-- ── 真ん中 ────────────────────────────────────── -->
     <TextView
-        android:id="@+id/statusText"
+        android:id="@+id/hintText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="top|start"
-        android:layout_margin="16dp"
-        android:background="#99000000"
-        android:paddingStart="12dp"
-        android:paddingTop="6dp"
-        android:paddingEnd="12dp"
-        android:paddingBottom="6dp"
-        android:textColor="#ffffff"
-        android:textSize="14sp" />
+        android:layout_gravity="center"
+        android:background="@drawable/capture_hint_bg"
+        android:paddingStart="14dp"
+        android:paddingTop="5dp"
+        android:paddingEnd="14dp"
+        android:paddingBottom="5dp"
+        android:textColor="#FFFFFF"
+        android:textSize="11sp"
+        tools:text="横向きの範囲で記録されます" />
 
-    <Button
-        android:id="@+id/cancelButton"
+    <ProgressBar
+        android:id="@+id/busy"
+        style="?android:attr/progressBarStyleLarge"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom|start"
-        android:layout_margin="20dp"
-        android:text="@string/capture_cancel" />
+        android:layout_gravity="center"
+        android:indeterminate="true"
+        android:visibility="gone" />
 
-    <Button
-        android:id="@+id/recordButton"
-        android:layout_width="wrap_content"
+    <!-- ── 下 ────────────────────────────────────────── -->
+    <LinearLayout
+        android:id="@+id/bottomBar"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="center_vertical|end"
-        android:layout_margin="24dp"
-        android:enabled="false"
-        android:minWidth="120dp"
-        android:text="@string/capture_start" />
+        android:layout_gravity="bottom"
+        android:background="@drawable/capture_scrim_bottom"
+        android:orientation="vertical"
+        android:paddingStart="16dp"
+        android:paddingTop="14dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="16dp">
+
+        <LinearLayout
+            android:id="@+id/zoomRow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="10dp"
+            android:orientation="horizontal" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <!-- 効いている手ぶれ補正。端末の補正を使うことがこのアプリの目的なので、
+                 目で確かめられるように出しておく。 -->
+            <TextView
+                android:id="@+id/stabilizationText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:maxLines="2"
+                android:textColor="#B3FFFFFF"
+                android:textSize="10sp"
+                tools:text="手ぶれ補正\nあり" />
+
+            <dev.cutlog.shell.ShutterView
+                android:id="@+id/shutter"
+                android:layout_width="78dp"
+                android:layout_height="78dp" />
+
+            <!-- Web の右下にある「動画」。撮れるものが動画だけであることを示す。 -->
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="end"
+                android:text="@string/capture_kind_video"
+                android:textColor="#8CFFFFFF"
+                android:textSize="11sp" />
+        </LinearLayout>
+    </LinearLayout>
 </FrameLayout>

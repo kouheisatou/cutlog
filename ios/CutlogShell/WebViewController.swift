@@ -37,6 +37,37 @@ final class WebViewController: UIViewController {
         load()
     }
 
+    /// 端末の切り欠きの寸法が変わったら（回転、別の端末での起動）Web にも伝え直す
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        sendSafeAreaInsets()
+    }
+
+    // MARK: - 切り欠きの逃げ
+    //
+    // ★WKWebView の中では CSS の env(safe-area-inset-*) が 0 と答えることがある。
+    //   Safari で見たときは効いているので気づきにくいが、殻の中では
+    //   画面の上のバーが端末のカメラ（ダイナミックアイランド）の下に潜り、押せなくなる。
+    //   そこで、本当の寸法をこちらから CSS 変数として入れ直す。
+    //   Web の CSS は env() を直に読まず --sa-top / --sa-bottom を見るようにしてある。
+    //
+    //   style 属性そのものは Content-Security-Policy の style-src 'self' に弾かれるが、
+    //   ここで使う CSSOM（element.style.setProperty）は対象外なので通る。
+    private func sendSafeAreaInsets() {
+        guard isViewLoaded, webView != nil else { return }
+        let insets = view.safeAreaInsets
+        let js = """
+        (function () {
+          var r = document.documentElement;
+          if (!r) { return false; }
+          r.style.setProperty('--sa-top', '\(Int(insets.top.rounded()))px');
+          r.style.setProperty('--sa-bottom', '\(Int(insets.bottom.rounded()))px');
+          return true;
+        })();
+        """
+        webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
     // MARK: - 組み立て
 
     private func setUpWebView() {
@@ -193,10 +224,20 @@ final class WebViewController: UIViewController {
 
     // MARK: - native → Web
 
-    /// 契約: window.cutlogNative.onResult({ ok: true }) / ({ ok: false, error: "..." })
-    private func sendResult(ok: Bool, error: String? = nil) {
+    /// 契約:
+    ///   window.cutlogNative.onResult({ ok: true, cutId, logId, localDate })
+    ///   window.cutlogNative.onResult({ ok: false, error: "..." })
+    ///
+    /// うまくいったときにカットの素性まで返すのは、Web 側が
+    /// 「撮った日の画面を開いて、いま撮ったところから流す」ところまで進めるようにするためである。
+    private func sendResult(ok: Bool, error: String? = nil, created: CutUploader.Created? = nil) {
         var payload: [String: Any] = ["ok": ok]
         if let error { payload["error"] = error }
+        if let created {
+            if let v = created.cutId { payload["cutId"] = v }
+            if let v = created.logId { payload["logId"] = v }
+            if let v = created.localDate { payload["localDate"] = v }
+        }
         let json = (try? JSONSerialization.data(withJSONObject: payload))
             .flatMap { String(data: $0, encoding: .utf8) } ?? #"{"ok":false,"error":"内部エラー"}"#
         // 殻が古い Web を掴んでいて cutlogNative が居ない場合に例外を出さないよう、存在を見てから呼ぶ。
@@ -233,8 +274,8 @@ final class WebViewController: UIViewController {
             guard let self else { return }
             dismiss(animated: true) {
                 switch result {
-                case .success:
-                    self.sendResult(ok: true)
+                case .success(let created):
+                    self.sendResult(ok: true, created: created)
                 case .cancelled:
                     // 利用者が自分でやめた場合は Web にトーストを出させたくないので、
                     // 失敗扱いにしつつ空の理由を渡す（app.js は error が無ければ黙る）。
@@ -295,6 +336,8 @@ extension WebViewController: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         setLoading(false)
         removeErrorView()
+        // 読み込みのたびに入れ直す。新しい document には前の指定が残らないため。
+        sendSafeAreaInsets()
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {

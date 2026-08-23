@@ -7,6 +7,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
 import java.io.File
+import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
@@ -30,7 +31,16 @@ object Uploader {
     }
 
     sealed class Result {
-        object Ok : Result()
+        /**
+         * 上げ終わった。Web を「撮った日の画面」へ連れて行くために、
+         * サーバが作ったカットの素性も持ち帰る（読めなければ null のまま）。
+         */
+        data class Ok(
+            val cutId: String?,
+            val logId: String?,
+            val localDate: String?,
+        ) : Result()
+
         data class Failed(val message: String) : Result()
     }
 
@@ -56,7 +66,7 @@ object Uploader {
         return runCatching {
             client.newCall(builder.build()).execute().use { res ->
                 if (res.isSuccessful) {
-                    Result.Ok
+                    parseCreated(res.body?.string())
                 } else {
                     // 本文は長くなりうるので頭だけ拾う
                     val detail = res.body?.string()?.take(200).orEmpty()
@@ -66,5 +76,16 @@ object Uploader {
         }.getOrElse { e ->
             Result.Failed(e.message ?: e.javaClass.simpleName)
         }
+    }
+
+    /**
+     * 返ってきた JSON から、撮った日の画面を開くのに要る分だけ取り出す。
+     * 読めなくても送信自体は成功しているので、空のまま先へ進める。
+     */
+    private fun parseCreated(body: String?): Result.Ok {
+        val cut = runCatching { JSONObject(body.orEmpty()).optJSONObject("cut") }.getOrNull()
+            ?: return Result.Ok(null, null, null)
+        fun str(key: String) = cut.optString(key, "").ifBlank { null }
+        return Result.Ok(str("id"), str("logId"), str("localDate"))
     }
 }

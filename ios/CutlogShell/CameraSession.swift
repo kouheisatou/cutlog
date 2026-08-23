@@ -33,6 +33,10 @@ final class CameraSession: NSObject {
     private let queue = DispatchQueue(label: "dev.cutlog.shell.camera")
     private let movieOutput = AVCaptureMovieFileOutput()
     private(set) var device: AVCaptureDevice?
+    /// 前後を入れ替えるときに外す必要があるので、入力を持っておく
+    private var videoInput: AVCaptureDeviceInput?
+    /// いま向いている面。Web の facing と同じ言葉でサーバへ送る。
+    private(set) var position: AVCaptureDevice.Position = .back
 
     /// 実際に効いている手ぶれ補正。画面に出して確かめられるようにしている。
     private(set) var stabilizationLabel: String = "未設定"
@@ -57,6 +61,8 @@ final class CameraSession: NSObject {
                 do {
                     try self.buildSession()
                     self.session.startRunning()
+                    // ★走らせてからでないと、効いている補正は分からない
+                    self.confirmStabilization()
                     DispatchQueue.main.async { completion(.success(())) }
                 } catch {
                     DispatchQueue.main.async { completion(.failure(error)) }
@@ -92,12 +98,13 @@ final class CameraSession: NSObject {
         // 【要点 1】複合カメラを優先する。
         // 複合カメラは広角と超広角を束ねており、超広角側の余白を使った
         // シネマティック手ぶれ補正（cinematicExtended）が効きやすい。
-        guard let camera = Self.pickCamera() else { throw SetupError.noCamera }
+        guard let camera = Self.pickCamera(position) else { throw SetupError.noCamera }
         device = camera
 
-        guard let videoInput = try? AVCaptureDeviceInput(device: camera),
-              session.canAddInput(videoInput) else { throw SetupError.cannotAddInput }
-        session.addInput(videoInput)
+        guard let input = try? AVCaptureDeviceInput(device: camera),
+              session.canAddInput(input) else { throw SetupError.cannotAddInput }
+        session.addInput(input)
+        videoInput = input
 
         // 音声。取れなくても映像だけで続ける（マイクの無い機種・シミュレータ対策）。
         if let mic = AVCaptureDevice.default(for: .audio),
@@ -119,7 +126,7 @@ final class CameraSession: NSObject {
 
     /// 使えるカメラを、手ぶれ補正と画質に効く順で選ぶ。
     /// Triple → DualWide → Wide。前 2 つが無い機種（SE など）でも最後で必ず拾える。
-    private static func pickCamera() -> AVCaptureDevice? {
+    private static func pickCamera(_ position: AVCaptureDevice.Position) -> AVCaptureDevice? {
         let preferred: [AVCaptureDevice.DeviceType] = [
             .builtInTripleCamera,
             .builtInDualWideCamera,
@@ -129,14 +136,108 @@ final class CameraSession: NSObject {
         // こちらの優先順を守るには 1 つずつ引く。
         for type in preferred {
             let found = AVCaptureDevice.DiscoverySession(
-                deviceTypes: [type], mediaType: .video, position: .back
+                deviceTypes: [type], mediaType: .video, position: position
             ).devices.first
             if let found { return found }
         }
-        return AVCaptureDevice.default(for: .video)
+        return AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position)
+            ?? AVCaptureDevice.default(for: .video)
+    }
+
+    // MARK: - 前と後ろの入れ替え
+
+    /// Web のカメラ画面と同じく、前後を切り替えられるようにする。
+    /// 入力を差し替えるだけなので、走らせたまま行う（止めると画が一度黒くなる）。
+    func flip(completion: @escaping () -> Void) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            let next: AVCaptureDevice.Position = position == .back ? .front : .back
+            guard let camera = Self.pickCamera(next),
+                  let input = try? AVCaptureDeviceInput(device: camera) else {
+                DispatchQueue.main.async { completion() }
+                return
+            }
+            session.beginConfiguration()
+            if let old = videoInput { session.removeInput(old) }
+            if session.canAddInput(input) {
+                session.addInput(input)
+                videoInput = input
+                device = camera
+                position = next
+            } else if let old = videoInput {
+                session.addInput(old)   // 戻せないときは元へ
+            }
+            session.commitConfiguration()
+            // 入力が変われば形式も変わる。補正は選び直しになる。
+            applyStabilization()
+            confirmStabilization()
+            DispatchQueue.main.async { completion() }
+        }
+    }
+
+    /// サーバへ送る facing。Web 側と同じ言葉にそろえる。
+    var facing: String { position == .front ? "user" : "environment" }
+
+    // MARK: - ズーム
+
+    /// いまの倍率。画面の表示は「広角を 1×」とする世間の言い方に合わせるので、
+    /// ここでは端末そのままの値を返し、換算は zoomStops 側で持つ。
+    var zoomFactor: CGFloat { device?.videoZoomFactor ?? 1 }
+
+    /// 端末の最大倍率。デジタルズームで荒れるところまでは出さない。
+    var maxZoomFactor: CGFloat {
+        guard let device else { return 1 }
+        return min(device.activeFormat.videoMaxZoomFactor, 8)
+    }
+
+    /// 画面に出す倍率の目印。
+    /// 複合カメラはレンズの切り替わる点（0.5× や 2× に当たる）を持っているので、それを使う。
+    /// 単眼の機種には切り替わる点が無いので、1×・2× だけ出す。
+    var zoomStops: [CGFloat] {
+        guard let device else { return [1] }
+        let switchOvers = device.virtualDeviceSwitchOverVideoZoomFactors.map { CGFloat(truncating: $0) }
+        var stops: [CGFloat] = [1] + switchOvers
+        if stops.count == 1 { stops.append(min(2, maxZoomFactor)) }
+        return stops.filter { $0 <= maxZoomFactor }.sorted()
+    }
+
+    /// 目印に出す文字。超広角を含む機種では広角が 1× に見えるよう、切り替わる点で割る。
+    /// （複合カメラの倍率 1.0 は超広角なので、そのまま出すと 1× が広い画になって混乱する）
+    var zoomBase: CGFloat {
+        guard let device else { return 1 }
+        // 切り替わる点が 2 つ以上あるなら超広角つき。最初の点が広角の始まり。
+        let switchOvers = device.virtualDeviceSwitchOverVideoZoomFactors.map { CGFloat(truncating: $0) }
+        return switchOvers.count >= 2 ? switchOvers[0] : 1
+    }
+
+    func setZoom(_ factor: CGFloat) {
+        guard let device else { return }
+        let clamped = max(1, min(factor, maxZoomFactor))
+        do {
+            try device.lockForConfiguration()
+            defer { device.unlockForConfiguration() }
+            // 目盛りを掴んで動かすので、飛ばずに追いつく速さで寄せる
+            device.ramp(toVideoZoomFactor: clamped, withRate: 8)
+        } catch { }
     }
 
     // MARK: - 手ぶれ補正（このアプリの主目的）
+    //
+    // 調べて分かったこと（Apple の技術資料・AVFoundation の決まり）:
+    //  ・補正は端末ではなく「接続（AVCaptureConnection）」に対して指定する
+    //  ・実際に効いているかは activeVideoStabilizationMode でしか分からない。
+    //    こちらが指定する preferredVideoStabilizationMode は、あくまで希望である
+    //  ・既定は off。指定しない限り一切効かない
+    //  ・cinematic 系が使えるのは 1080p30 / 1080p60 の形式だけ。
+    //    standard も 16:9 の形式に限られる
+    //  ・★プレビューには補正が乗らない。補正は録画される側にだけ効く。
+    //    画面を見て「効いていない」と見えるのは、これが理由であることが多い
+    //  ・auto を指定すると、形式とフレームレートに合わせて端末が選んでくれる
+    //
+    // そこで、次の順で決める。
+    //  1. 端末に選ばせる（auto）。これが「端末純正のふるまい」にいちばん近い
+    //  2. それでも off のままなら、強い順に明示的に指定する
+    //  3. 走らせたあとに activeVideoStabilizationMode を読み、効いた値を控える
 
     private func applyStabilization() {
         guard let connection = movieOutput.connection(with: .video) else {
@@ -148,18 +249,31 @@ final class CameraSession: NSObject {
             return
         }
 
-        // 強い順に試す。対応の可否は「今の activeFormat」で決まるので、
-        // フォーマットを変えたら必ず引き直す。
-        if let mode = bestSupportedMode() {
-            connection.preferredVideoStabilizationMode = mode
-            stabilizationLabel = Self.name(of: mode)
+        // まず端末に選ばせる。形式とフレームレートを見て、いちばん妥当なものが選ばれる。
+        connection.preferredVideoStabilizationMode = .auto
+        stabilizationLabel = "自動（確認中）"
+    }
+
+    /// セッションを走らせたあとに呼ぶ。
+    /// ★ここが肝。走らせる前の activeVideoStabilizationMode は当てにならない。
+    /// auto のままで効かなかったときだけ、強いモードを明示して指定し直す。
+    private func confirmStabilization() {
+        guard let connection = movieOutput.connection(with: .video),
+              connection.isVideoStabilizationSupported else { return }
+
+        if connection.activeVideoStabilizationMode != .off {
+            stabilizationLabel = Self.name(of: connection.activeVideoStabilizationMode)
             return
         }
 
-        // ここに来るのは、今のフォーマットが補正に対応していない場合。
-        // 「補正が効くこと」が最優先なので、補正に対応するフォーマットを自分で選び直す。
-        // activeFormat を触ると sessionPreset は .inputPriority に落ちるが、
-        // 補正の無い 1080p より、補正の効く 1080p の方がこのアプリの目的に適う。
+        // auto で効かなかった場合。今の形式が許すものを強い順に当てる。
+        if let mode = bestSupportedMode() {
+            connection.preferredVideoStabilizationMode = mode
+            stabilizationLabel = Self.name(of: mode) + "（指定）"
+            return
+        }
+
+        // 今の形式では無理なので、補正の効く 1080p の形式へ移る。
         if selectStabilizableFormat(), let mode = bestSupportedMode() {
             connection.preferredVideoStabilizationMode = mode
             stabilizationLabel = Self.name(of: mode) + "（形式を変更）"
@@ -169,12 +283,9 @@ final class CameraSession: NSObject {
         stabilizationLabel = "使える補正なし"
     }
 
-    /// 強い順に、今使える手ぶれ補正を 1 つ返す。
-    ///
-    /// 対応の可否を持っているのは AVCaptureConnection ではなく AVCaptureDeviceFormat の方
-    /// （connection 側には isVideoStabilizationSupported という総合可否しか無い）。
-    /// 同じ端末でもフォーマットによって cinematic が付いたり付かなかったりするため、
-    /// 必ず「今の activeFormat」に対して訊く。
+    /// 今の形式で使える中で、いちばん強い補正を返す。
+    /// ★可否を持っているのは形式（AVCaptureDevice.Format）の方である。
+    ///   接続側には isVideoStabilizationSupported という総合可否しか無い。
     private func bestSupportedMode() -> AVCaptureVideoStabilizationMode? {
         guard let format = device?.activeFormat else { return nil }
         for mode in Self.preferredModes where format.isVideoStabilizationModeSupported(mode) {
@@ -183,43 +294,35 @@ final class CameraSession: NSObject {
         return nil
     }
 
-    /// 効き目の強い順。手ぶれ補正がこのアプリの主目的なので、常に一番強いものを採る。
+    /// 強い順。Enhanced は新しい端末にしか無いので、あるときだけ先頭に入れる。
     private static var preferredModes: [AVCaptureVideoStabilizationMode] {
         var modes: [AVCaptureVideoStabilizationMode] = []
-        // iOS 18 以降のさらに強い補正。使えるなら cinematicExtended より優先する。
-        if #available(iOS 18.0, *) {
-            modes.append(.cinematicExtendedEnhanced)
-        }
+        if #available(iOS 18.0, *) { modes.append(.cinematicExtendedEnhanced) }
         modes.append(contentsOf: [.cinematicExtended, .cinematic, .standard])
         return modes
     }
 
-    /// 手ぶれ補正に対応するフォーマットへ切り替える。切り替えたら true。
+    /// 補正の効く形式（1080p30 前後）へ移す。
+    /// cinematic 系は 1080p30 / 1080p60 にしか無いので、そこを狙う。
     private func selectStabilizableFormat() -> Bool {
         guard let device else { return false }
-
-        // 1080p・30fps を狙う。高解像度や高フレームレートの形式は補正が付かないことが多い。
         let wanted = device.formats.filter { format in
-            let dims = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
-            guard dims.width == 1920, dims.height == 1080 else { return false }
+            let d = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+            guard d.width == 1920, d.height == 1080 else { return false }
             guard format.isVideoStabilizationModeSupported(.cinematicExtended)
                     || format.isVideoStabilizationModeSupported(.cinematic) else { return false }
-            // 30fps を含む範囲を持つものだけ
+            // 30fps を含む範囲のものに絞る（60fps 専用だと明るさが落ちる）
             return format.videoSupportedFrameRateRanges.contains {
-                $0.minFrameRate <= 30 && 30 <= $0.maxFrameRate
+                $0.minFrameRate <= 30 && $0.maxFrameRate >= 30
             }
         }
-
-        // cinematicExtended に対応するものを優先する
         let best = wanted.first { $0.isVideoStabilizationModeSupported(.cinematicExtended) } ?? wanted.first
         guard let best else { return false }
-
         do {
-            // 形式の入れ替えは設定ブロックで囲む。囲まないと途中の状態が動いてしまう。
-            session.beginConfiguration()
-            defer { session.commitConfiguration() }
             try device.lockForConfiguration()
             defer { device.unlockForConfiguration() }
+            session.beginConfiguration()
+            defer { session.commitConfiguration() }
             // activeFormat を直接指定するので、セッション側は入力任せにする
             session.sessionPreset = .inputPriority
             device.activeFormat = best
@@ -227,15 +330,12 @@ final class CameraSession: NSObject {
             device.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: 30)
             return true
         } catch {
-            NSLog("[cutlog] フォーマットを変えられませんでした: \(error.localizedDescription)")
             return false
         }
     }
 
     private static func name(of mode: AVCaptureVideoStabilizationMode) -> String {
-        if #available(iOS 18.0, *), mode == .cinematicExtendedEnhanced {
-            return "シネマティック拡張＋"
-        }
+        if #available(iOS 18.0, *), mode == .cinematicExtendedEnhanced { return "シネマティック拡張+" }
         switch mode {
         case .cinematicExtended: return "シネマティック拡張"
         case .cinematic: return "シネマティック"
@@ -247,7 +347,7 @@ final class CameraSession: NSObject {
     }
 
     /// 実際に効いている補正の名前。
-    /// 録画が始まるまでは .off のことがあるので、その間は指定した方の名前を返す。
+    /// ★プレビューには乗らないので、ここの値だけが確かめる手がかりになる。
     var activeStabilizationName: String {
         guard let connection = movieOutput.connection(with: .video) else { return "-" }
         let active = connection.activeVideoStabilizationMode

@@ -14,9 +14,14 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.Gravity
+import android.view.View
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.camera2.interop.Camera2CameraInfo
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraInfo
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
@@ -31,6 +36,8 @@ import androidx.camera.video.VideoCapture
 import androidx.camera.video.VideoRecordEvent
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import dev.cutlog.shell.databinding.ActivityCaptureBinding
 import org.json.JSONObject
 import java.io.File
@@ -53,6 +60,10 @@ class CaptureActivity : AppCompatActivity() {
     private var recording: Recording? = null
     private var outputFile: File? = null
     private var startedAt: Instant? = null
+
+    /** いま向いている面。Web の facing と同じ言葉でサーバへ送る。 */
+    private var lensFacing = CameraSelector.LENS_FACING_BACK
+    private var camera: Camera? = null
 
     /** 位置は「取れていれば付ける」だけの添え物。撮影の流れは止めない。 */
     @Volatile
@@ -88,9 +99,15 @@ class CaptureActivity : AppCompatActivity() {
         }
         request = parsed
 
-        binding.statusText.text = "${request.seconds} 秒"
-        binding.recordButton.setOnClickListener { startRecording() }
-        binding.cancelButton.setOnClickListener { finishWithError("撮影を取りやめました") }
+        binding.destText.text =
+            if (request.logName.isBlank()) "" else "記録先 ${request.logName}"
+        binding.hintText.setText(R.string.capture_preparing)
+        binding.shutter.isEnabled = false
+        binding.flipButton.isEnabled = false
+        binding.shutter.setOnClickListener { startRecording() }
+        binding.closeButton.setOnClickListener { finishWithError("撮影を取りやめました") }
+        binding.flipButton.setOnClickListener { flipCamera() }
+        applyBarInsets()
 
         // 位置は任意なので、必須の 2 つと一緒に頼んで、断られてもそのまま進む。
         permissionLauncher.launch(
@@ -100,6 +117,34 @@ class CaptureActivity : AppCompatActivity() {
                 Manifest.permission.ACCESS_FINE_LOCATION,
             ),
         )
+    }
+
+    /**
+     * 上下の帯の中身を、端末のバーや切り欠きの内側に収める。
+     * ★targetSdk 35 以降は画面の端まで描くのが既定なので、
+     *   入れないと閉じるボタンが切り欠きの下に潜って押せなくなる。
+     */
+    private fun applyBarInsets() {
+        val topPadTop = binding.topBar.paddingTop
+        val topPadStart = binding.topBar.paddingStart
+        val topPadEnd = binding.topBar.paddingEnd
+        val bottomPadBottom = binding.bottomBar.paddingBottom
+        val bottomPadStart = binding.bottomBar.paddingStart
+        val bottomPadEnd = binding.bottomBar.paddingEnd
+        ViewCompat.setOnApplyWindowInsetsListener(binding.captureRoot) { _, insets ->
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
+            )
+            binding.topBar.setPaddingRelative(
+                topPadStart + bars.left, topPadTop + bars.top,
+                topPadEnd + bars.right, binding.topBar.paddingBottom,
+            )
+            binding.bottomBar.setPaddingRelative(
+                bottomPadStart + bars.left, binding.bottomBar.paddingTop,
+                bottomPadEnd + bars.right, bottomPadBottom + bars.bottom,
+            )
+            insets
+        }
     }
 
     override fun onDestroy() {
@@ -116,7 +161,7 @@ class CaptureActivity : AppCompatActivity() {
             val provider = runCatching { future.get() }.getOrNull()
                 ?: return@addListener finishWithError("カメラを開けませんでした")
 
-            val selector = CameraSelector.DEFAULT_BACK_CAMERA
+            val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
             // 端末が手ぶれ補正に対応しているかは、束ねる前に CameraInfo から見ておく。
             // 非対応の端末で有効にすると bind 時に落ちるため。
             val info = runCatching { selector.filter(provider.availableCameraInfos).firstOrNull() }
@@ -150,21 +195,96 @@ class CaptureActivity : AppCompatActivity() {
                 .build()
                 .also { it.surfaceProvider = binding.preview.surfaceProvider }
 
-            runCatching {
+            val bound = runCatching {
                 provider.unbindAll()
                 provider.bindToLifecycle(this, selector, preview, capture)
-            }.onFailure {
+            }.getOrElse {
                 Log.w(TAG, "bind に失敗", it)
                 return@addListener finishWithError("カメラを使えませんでした: ${it.message}")
             }
 
+            camera = bound
             videoCapture = capture
-            binding.recordButton.isEnabled = true
-            binding.statusText.text = buildString {
-                append("${request.seconds} 秒")
-                if (videoStabilization) append(" ・手ぶれ補正あり")
-            }
+            binding.shutter.isEnabled = true
+            binding.flipButton.isEnabled = hasBothLenses(provider)
+            // 端末の補正を使うことがこのアプリの目的なので、効いているかを画面に出す。
+            binding.stabilizationText.text =
+                "手ぶれ補正\n" + if (videoStabilization) "あり" else "この端末では使えない"
+            showOpeningHints(videoStabilization && !previewStabilization)
+            buildZoomStops(bound)
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    /**
+     * 最初に出す短い注意書き。
+     * プレビューには補正が乗らない端末では、その断りを先に出してから通常の案内へ戻す。
+     */
+    private fun showOpeningHints(previewUnstabilized: Boolean) {
+        if (previewUnstabilized) {
+            binding.hintText.setText(R.string.capture_hint_stabilization)
+            mainHandler.postDelayed({
+                if (recording == null) binding.hintText.setText(R.string.capture_hint_landscape)
+            }, 4000)
+        } else {
+            binding.hintText.setText(R.string.capture_hint_landscape)
+        }
+    }
+
+    /** 前と後ろの両方があるときだけ、切り替えのボタンを効かせる。 */
+    private fun hasBothLenses(provider: ProcessCameraProvider): Boolean = runCatching {
+        provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) &&
+            provider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA)
+    }.getOrDefault(false)
+
+    /** Web のカメラ画面と同じく、前後を切り替えられるようにする。 */
+    private fun flipCamera() {
+        if (recording != null) return
+        lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
+            CameraSelector.LENS_FACING_FRONT
+        } else {
+            CameraSelector.LENS_FACING_BACK
+        }
+        binding.shutter.isEnabled = false
+        binding.flipButton.isEnabled = false
+        startCamera()
+    }
+
+    /**
+     * 倍率の目印。Web の .zoom-stops と同じく、押すとその倍率に飛ぶ粒を並べる。
+     * 端末が出せる範囲の中から、切りのいいところだけを拾う。
+     */
+    private fun buildZoomStops(bound: Camera) {
+        binding.zoomRow.removeAllViews()
+        val state = bound.cameraInfo.zoomState.value ?: return
+        val stops = listOf(0.5f, 1f, 2f, 3f, 5f)
+            .filter { it >= state.minZoomRatio && it <= state.maxZoomRatio }
+        if (stops.size < 2) return
+        val density = resources.displayMetrics.density
+        for (stop in stops) {
+            val button = TextView(this).apply {
+                text = if (stop < 1f) "%.1f×".format(stop) else "%.0f×".format(stop)
+                textSize = 11f
+                gravity = Gravity.CENTER
+                setBackgroundResource(R.drawable.zoom_stop_bg)
+                setTextColor(ContextCompat.getColorStateList(context, R.color.zoom_stop_text))
+                minWidth = (40 * density).toInt()
+                setPadding((8 * density).toInt(), (5 * density).toInt(),
+                    (8 * density).toInt(), (5 * density).toInt())
+                isSelected = stop == state.zoomRatio
+                setOnClickListener {
+                    camera?.cameraControl?.setZoomRatio(stop)
+                    for (i in 0 until binding.zoomRow.childCount) {
+                        binding.zoomRow.getChildAt(i).isSelected = false
+                    }
+                    isSelected = true
+                }
+            }
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                (28 * density).toInt(),
+            ).apply { marginEnd = (6 * density).toInt() }
+            binding.zoomRow.addView(button, lp)
+        }
     }
 
     /**
@@ -205,8 +325,10 @@ class CaptureActivity : AppCompatActivity() {
 
         val file = File(cacheDir, "cut_${System.currentTimeMillis()}.mp4")
         outputFile = file
-        binding.recordButton.isEnabled = false
-        binding.cancelButton.isEnabled = false
+        binding.shutter.isEnabled = false
+        binding.closeButton.visibility = View.GONE
+        binding.flipButton.visibility = View.GONE
+        binding.hintText.visibility = View.GONE
 
         recording = capture.output
             .prepareRecording(this, FileOutputOptions.Builder(file).build())
@@ -217,17 +339,22 @@ class CaptureActivity : AppCompatActivity() {
                         startedAt = Instant.now()
                         // 指定の秒数で自分から止める。Web 側の「◯秒のカット」に合わせるため。
                         mainHandler.postDelayed(autoStop, request.seconds * 1000L)
-                        tickRemaining()
+                        // 残り時間は輪が一周することで伝わるので、数字は出さない。
+                        binding.shutter.startRecording(request.seconds.toLong())
                     }
 
                     is VideoRecordEvent.Finalize -> {
                         mainHandler.removeCallbacks(autoStop)
+                        binding.shutter.stopRecording()
                         if (event.hasError()) {
                             file.delete()
                             finishWithError("録画に失敗しました (${event.error})")
                         } else {
                             val ms = event.recordingStats.recordedDurationNanos / 1_000_000
-                            binding.statusText.text = "送信中…"
+                            binding.shutter.visibility = View.GONE
+                            binding.hintText.visibility = View.VISIBLE
+                            binding.hintText.setText(R.string.capture_sending)
+                            binding.busy.visibility = View.VISIBLE
                             upload(file, ms)
                         }
                     }
@@ -235,16 +362,6 @@ class CaptureActivity : AppCompatActivity() {
                     else -> Unit
                 }
             }
-    }
-
-    /** 残り秒数を出すだけ。録画そのものは autoStop が止める。 */
-    private fun tickRemaining() {
-        val started = startedAt ?: return
-        val left = request.seconds - (Instant.now().toEpochMilli() - started.toEpochMilli()) / 1000
-        if (left >= 0 && recording != null) {
-            binding.statusText.text = "録画中 ${left} 秒"
-            mainHandler.postDelayed({ tickRemaining() }, 250)
-        }
     }
 
     private fun stopRecording() {
@@ -261,7 +378,10 @@ class CaptureActivity : AppCompatActivity() {
             put("takenAt", DateTimeFormatter.ISO_INSTANT.format(startedAt ?: Instant.now()))
             put("tzOffset", request.tzOffset)
             // Web 側と同じ言い方に揃える（'environment' / 'user'）
-            put("facing", "environment")
+            put(
+                "facing",
+                if (lensFacing == CameraSelector.LENS_FACING_FRONT) "user" else "environment",
+            )
             put("source", "camera")
             lastLocation?.let {
                 put("lat", it.latitude)
@@ -276,7 +396,14 @@ class CaptureActivity : AppCompatActivity() {
             mainHandler.post {
                 when (res) {
                     is Uploader.Result.Ok -> {
-                        setResult(RESULT_OK)
+                        // 撮った日の画面を開けるよう、作られたカットの素性を持ち帰る
+                        setResult(
+                            RESULT_OK,
+                            Intent()
+                                .putExtra(EXTRA_CUT_ID, res.cutId)
+                                .putExtra(EXTRA_LOG_ID, res.logId)
+                                .putExtra(EXTRA_LOCAL_DATE, res.localDate),
+                        )
                         finish()
                     }
                     is Uploader.Result.Failed -> finishWithError(res.message)
@@ -330,6 +457,9 @@ class CaptureActivity : AppCompatActivity() {
         private const val TAG = "CaptureActivity"
         private const val EXTRA_REQUEST = "request"
         const val EXTRA_ERROR = "error"
+        const val EXTRA_CUT_ID = "cutId"
+        const val EXTRA_LOG_ID = "logId"
+        const val EXTRA_LOCAL_DATE = "localDate"
 
         fun intentFor(context: Context, req: CaptureRequest): Intent =
             Intent(context, CaptureActivity::class.java).putExtra(

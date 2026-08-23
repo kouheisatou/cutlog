@@ -23,6 +23,14 @@
   --s1: 8px; --s2: 16px; --s3: 24px; --s4: 32px; --s5: 48px; --s6: 72px;
   --track: .16em;
   --gutter: 92px;
+
+  /* 切り欠き（ノッチ・ダイナミックアイランド）とホームバーの逃げ。
+     ★ env() を直に書かず、いったん変数に受けている。
+       アプリの殻（WKWebView）では env(safe-area-inset-*) が 0 と答えることがあり、
+       そのままだと上のバーが端末のカメラの下に潜って押せなくなる。
+       殻の側から同じ名前で本当の値を入れ直せるよう、差し替え口を 1 か所にまとめてある。 */
+  --sa-top: env(safe-area-inset-top, 0px);
+  --sa-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -102,7 +110,7 @@ button { cursor: pointer; }
 .topbar {
   display: flex; align-items: center; gap: var(--s3);
   padding: var(--s3) var(--s4) var(--s2);
-  flex: none; padding-top: max(var(--s3), env(safe-area-inset-top));
+  flex: none; padding-top: max(var(--s3), var(--sa-top));
 }
 .topbar-title { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
 .topbar-title strong {
@@ -345,7 +353,7 @@ dialog.sheet::backdrop { background: rgba(16,16,18,.5); }
   width: min(640px, 100%);
   max-height: 88dvh; overflow: auto; padding: var(--s4) var(--s4) var(--s5);
   border-radius: 18px 18px 0 0;
-  padding-bottom: max(var(--s5), env(safe-area-inset-bottom));
+  padding-bottom: max(var(--s5), var(--sa-bottom));
   box-shadow: 0 -8px 40px rgba(0, 0, 0, .22);
   touch-action: pan-y;
 }
@@ -421,7 +429,7 @@ dialog.sheet::backdrop { background: rgba(16,16,18,.5); }
 .capture-top {
   position: absolute; top: 0; left: 0; right: 0; z-index: 2;
   display: flex; align-items: center; gap: var(--s2); flex-wrap: nowrap;
-  padding: max(var(--s2), env(safe-area-inset-top)) var(--s3) var(--s2);
+  padding: max(var(--s2), var(--sa-top)) var(--s3) var(--s2);
   background: linear-gradient(to bottom, rgba(0,0,0,.55), transparent);
 }
 .capture-top .icon-btn { flex: none; }
@@ -430,7 +438,7 @@ dialog.sheet::backdrop { background: rgba(16,16,18,.5); }
 .capture-controls {
   position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
   display: flex; flex-direction: column; align-items: center; gap: var(--s2);
-  padding: var(--s3) var(--s3) max(var(--s3), env(safe-area-inset-bottom));
+  padding: var(--s3) var(--s3) max(var(--s3), var(--sa-bottom));
   background: linear-gradient(to top, rgba(0,0,0,.6), transparent);
 }
 .capture-bottom {
@@ -640,7 +648,7 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 1000;
   display: grid; grid-template-columns: repeat(3, 1fr);
   background: var(--paper); border-top: 1px solid var(--hair);
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: var(--sa-bottom);
 }
 .tab-item {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
@@ -655,7 +663,7 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
 .tab-item.active .ic { stroke-width: 1.9; }
 
 /* タブバーのぶん、中身の下に余白を作る */
-.tabbar-pad, .screen-body, .list-body, .day-list { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+.tabbar-pad, .screen-body, .list-body, .day-list { padding-bottom: calc(64px + var(--sa-bottom)); }
 
 /* 全カット：写真のアプリのように、日付ごとに詰めて並べる */
 .all-day-head { padding-left: var(--s4); padding-right: var(--s4); }
@@ -688,7 +696,11 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
 /* スマホ：一覧と詳細を切り替える */
 @media (max-width: 880px) {
   :root { --gutter: 58px; --s3: 18px; --s4: 20px; --s5: 28px; --s6: 44px; }
+  /* ★padding の一括指定は上の余白も書き直してしまう。
+     切り欠き（ダイナミックアイランド）の逃げがここで消え、
+     上のバーが端末のカメラの下に潜って押せなくなっていた。必ず入れ直す。 */
   .topbar { gap: var(--s2); padding: var(--s2) var(--s4) var(--s1); flex-wrap: wrap; row-gap: 0; }
+  .topbar { padding-top: max(var(--s2), var(--sa-top)); }
   .crumb { font-size: 11px; max-width: 46vw; }
   .crumbs li:last-child .crumb { max-width: 60vw; }
   .crumb-meta { display: none; }
@@ -698,8 +710,8 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
   .list-toolbar input[type=search], .list-toolbar select { font-size: 16px; }
   .list-toolbar { gap: var(--s2); }
   .cut-row { gap: var(--s2); padding: var(--s2) var(--s4); }
-  .toast { bottom: calc(80px + env(safe-area-inset-bottom)); }
-  .panel { padding: var(--s4); }
+  .toast { bottom: calc(80px + var(--sa-bottom)); }
+  .panel { padding: var(--s4); padding-bottom: max(var(--s4), var(--sa-bottom)); }
 }
 
 /* 小さいスマホ：時刻の軸を畳み、写真を大きく見せる */
@@ -722,7 +734,7 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
 
 /* 横向きのスマホ：高さを詰める */
 @media (max-height: 480px) and (orientation: landscape) {
-  .topbar { padding: var(--s1) var(--s4); }
+  .topbar { padding: var(--s1) var(--s4); padding-top: max(var(--s1), var(--sa-top)); }
   .day-head { padding-top: var(--s3); }
 }
 
@@ -790,7 +802,7 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
   padding: var(--s2) var(--s4) var(--s1); flex-wrap: wrap;
 }
 .day-bar .tc { font-size: 11px; color: var(--mute); letter-spacing: .08em; }
-.day-list { overflow: auto; flex: 1; padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+.day-list { overflow: auto; flex: 1; padding-bottom: calc(64px + var(--sa-bottom)); }
 .clip-row {
   position: relative; display: grid;
   grid-template-columns: 52px 56px minmax(0, 1fr) 38px 38px auto;
@@ -954,7 +966,7 @@ label.icon-btn { cursor: pointer; }
 #allSearch { width: 100%; font-size: 16px; }
 
 /* 見出しの帯を持たない画面は、上の余白を自分で持つ */
-.screen-body.top, .body.top { padding-top: max(var(--s3), env(safe-area-inset-top)); }
+.screen-body.top, .body.top { padding-top: max(var(--s3), var(--sa-top)); }
 .map-count {
   position: absolute; left: 8px; bottom: 6px;
   font-family: var(--mono); font-size: 10px; letter-spacing: .08em;
@@ -984,7 +996,7 @@ label#avatarPick { cursor: pointer; }
 .wide-panel { width: min(720px, 96vw); }
 
 /* マップは、下のタブ以外を全部使う（上に白い帯を作らない） */
-.body.full { padding: 0 0 calc(57px + env(safe-area-inset-bottom)); }
+.body.full { padding: 0 0 calc(57px + var(--sa-bottom)); }
 #mapScreen .list-pane { flex: 1; min-height: 0; }
 #mapScreen .map-host { flex: 1; min-height: 0; }
 
@@ -1044,7 +1056,7 @@ dialog.sheet.cam .panel { border-radius: 0; }
 .action-bar {
   position: sticky; bottom: 0; z-index: 5;
   display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap;
-  padding: var(--s2) var(--s4) calc(var(--s2) + 64px + env(safe-area-inset-bottom));
+  padding: var(--s2) var(--s4) calc(var(--s2) + 64px + var(--sa-bottom));
   background: linear-gradient(to top, var(--paper) 70%, transparent);
   border-top: 1px solid var(--hair);
 }

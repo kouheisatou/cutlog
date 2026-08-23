@@ -17,6 +17,8 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import dev.cutlog.shell.databinding.ActivityMainBinding
 import org.json.JSONObject
 
@@ -36,7 +38,13 @@ class MainActivity : AppCompatActivity() {
     ) { result ->
         // 撮影画面は「上げ終わったかどうか」だけを返す。動画そのものは橋に通さない。
         if (result.resultCode == Activity.RESULT_OK) {
-            sendResultToWeb(true, null)
+            sendResultToWeb(
+                ok = true,
+                error = null,
+                cutId = result.data?.getStringExtra(CaptureActivity.EXTRA_CUT_ID),
+                logId = result.data?.getStringExtra(CaptureActivity.EXTRA_LOG_ID),
+                localDate = result.data?.getStringExtra(CaptureActivity.EXTRA_LOCAL_DATE),
+            )
         } else {
             val err = result.data?.getStringExtra(CaptureActivity.EXTRA_ERROR)
             sendResultToWeb(false, err ?: "撮影を取りやめました")
@@ -64,7 +72,36 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
+        // 端末のバーや切り欠きの寸法を Web に伝える。下の「切り欠きの逃げ」を参照。
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
+            )
+            val d = resources.displayMetrics.density
+            safeAreaTopPx = (bars.top / d).toInt()
+            safeAreaBottomPx = (bars.bottom / d).toInt()
+            sendSafeAreaInsets()
+            insets
+        }
+
         loadSite()
+    }
+
+    // ── 切り欠きの逃げ ──────────────────────────────────
+    //
+    // ★targetSdk 35 以降、画面は端まで使う作りが既定になり、
+    //   WebView がステータスバーや切り欠きの下にも描かれる。
+    //   Web の CSS の env(safe-area-inset-*) は Android の WebView では当てにならないので、
+    //   本当の寸法をこちらから CSS 変数として入れ直す。
+    //   Web 側は env() を直に読まず --sa-top / --sa-bottom を見るようにしてある。
+    private var safeAreaTopPx = 0
+    private var safeAreaBottomPx = 0
+
+    private fun sendSafeAreaInsets() {
+        val js = "(function(){var r=document.documentElement; if(!r){return false;}" +
+            "r.style.setProperty('--sa-top','${safeAreaTopPx}px');" +
+            "r.style.setProperty('--sa-bottom','${safeAreaBottomPx}px'); return true;})();"
+        binding.webView.evaluateJavascript(js, null)
     }
 
     // ── WebView まわり ──────────────────────────────────
@@ -105,6 +142,8 @@ class MainActivity : AppCompatActivity() {
                 binding.loading.visibility = View.GONE
                 // 開けたら覆いは外す（再試行で戻ってきた場合のため）
                 binding.errorPanel.visibility = View.GONE
+                // 読み込みのたびに入れ直す。新しい document には前の指定が残らないため。
+                sendSafeAreaInsets()
             }
 
             override fun onReceivedError(
@@ -173,11 +212,25 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** native → web。window.cutlogNative.onResult({ ok, error }) を呼ぶ。 */
-    private fun sendResultToWeb(ok: Boolean, error: String?) {
+    /**
+     * native → web。window.cutlogNative.onResult({ ok, error, cutId, logId, localDate }) を呼ぶ。
+     *
+     * うまくいったときにカットの素性まで返すのは、Web 側が
+     * 「撮った日の画面を開いて、いま撮ったところから流す」ところまで進めるようにするためである。
+     */
+    private fun sendResultToWeb(
+        ok: Boolean,
+        error: String?,
+        cutId: String? = null,
+        logId: String? = null,
+        localDate: String? = null,
+    ) {
         val payload = JSONObject().apply {
             put("ok", ok)
             if (error != null) put("error", error)
+            if (cutId != null) put("cutId", cutId)
+            if (logId != null) put("logId", logId)
+            if (localDate != null) put("localDate", localDate)
         }
         // Web 側が古くて窓口が無いこともあるので、存在を見てから呼ぶ
         val js = "if (window.cutlogNative && window.cutlogNative.onResult)" +

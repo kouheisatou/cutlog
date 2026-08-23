@@ -3,10 +3,12 @@ import Foundation
 /// Web から降ってくる撮影の注文。
 /// 契約:
 ///   window.webkit.messageHandlers.cutlog.postMessage(
-///     { type: "capture", baseUrl, logId, seconds, tzOffset })
+///     { type: "capture", baseUrl, logId, logName, seconds, tzOffset })
 struct CaptureRequest {
     let baseURL: URL
     let logId: String
+    /// 記録先の名前。撮影画面の上に出すためだけに使う（空でも撮影はできる）。
+    let logName: String
     let seconds: Double
     /// JavaScript の getTimezoneOffset() と同じ向き（日本なら -540）。
     /// サーバがこれを使って「現地の日付」を決めるので、そのまま渡す。
@@ -23,6 +25,7 @@ struct CaptureRequest {
         self.baseURL = (dict["baseUrl"] as? String)
             .flatMap { Self.normalize($0) } ?? BuildConfig.baseURL
         self.logId = logId
+        self.logName = (dict["logName"] as? String) ?? ""
         // 秒数は Number でも String でも来うるので両対応にする。範囲外は握り潰す。
         let rawSeconds = (dict["seconds"] as? NSNumber)?.doubleValue
             ?? Double((dict["seconds"] as? String) ?? "") ?? 3

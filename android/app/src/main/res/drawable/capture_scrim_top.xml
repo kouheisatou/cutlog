@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 上の帯。明るい景色の上でも白い字とアイコンが読めるように、黒からぼかす。
+     Web の .capture-top と同じ濃さ（rgba(0,0,0,.55) → 透明）。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:angle="270"
+        android:startColor="#8C000000"
+        android:endColor="#00000000" />
+</shape>

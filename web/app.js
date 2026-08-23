@@ -1540,9 +1540,40 @@ window.cutlogNative = {
       return;
     }
     toast('カットを保存しました');
-    await refreshAfterChange();
+    await afterNativeCapture(r);
   },
 };
+
+// ネイティブで撮り終えたあとは、撮ったものがすぐ見えるところまで連れて行く。
+// 撮って終わりでは、繋いで見るというこのアプリの主旨に届かないためである。
+// 送り先のログの、撮った日の画面を開き、いま撮ったカットから流す。
+async function afterNativeCapture(r) {
+  const logId = r.logId || state.captureLogId || state.logId;
+  const date = r.localDate || localDateOf(new Date());
+  try {
+    if (logId && logId !== state.logId) {
+      state.logId = logId;
+      state.selected.clear();
+      closeDay();
+    }
+    await loadLogs();       // 一覧の件数と見本も新しくする
+    renderLogsList();
+    await openDay(date);
+    // いま撮ったカットが分かるなら、そこへ頭出しする
+    const i = r.cutId ? play.items.findIndex((it) => it.cut.id === r.cutId) : -1;
+    if (i >= 0) await showClip(i, 0, false);
+  } catch (err) {
+    // 画面を進められなくても、撮れたものは残っている。一覧だけでも新しくする。
+    console.error('[cutlog] 撮影後の画面遷移に失敗', err);
+    await refreshAfterChange();
+  }
+}
+
+// その日付を、端末の時間帯で YYYY-MM-DD にする
+function localDateOf(d) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
 
 // ネイティブの殻に撮影を任せる。任せられなければ false を返す。
 function captureViaNative() {
@@ -1552,6 +1583,8 @@ function captureViaNative() {
   return nativeShell.capture({
     baseUrl: location.origin,
     logId,
+    // 殻の撮影画面にも「記録先」を出すので、名前も一緒に渡す
+    logName: state.logs.find((l) => l.id === logId)?.name || '',
     seconds: Number(state.log?.cut_seconds) || CLIP_SECONDS_DEFAULT,
     tzOffset: new Date().getTimezoneOffset(),
   });

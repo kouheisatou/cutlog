@@ -53,12 +53,20 @@ enum CutUploader {
         }
     }
 
+    /// サーバが返した、いま作られたカット。
+    /// Web を撮った日の画面へ連れて行くために、この 3 つだけ受け取る。
+    struct Created {
+        let cutId: String?
+        let logId: String?
+        let localDate: String?
+    }
+
     /// multipart/form-data で送る。フィールド名は Web と同じ `file` と `meta`。
     static func upload(
         fileURL: URL,
         to request: CaptureRequest,
         meta: Meta,
-        completion: @escaping (Result<Void, Error>) -> Void
+        completion: @escaping (Result<Created, Error>) -> Void
     ) {
         cookieHeader(for: request.baseURL) { cookieHeader in
             guard let cookieHeader, !cookieHeader.isEmpty else {
@@ -107,10 +115,24 @@ enum CutUploader {
                     }
                     return
                 }
-                DispatchQueue.main.async { completion(.success(())) }
+                DispatchQueue.main.async { completion(.success(parseCreated(data))) }
             }
             task.resume()
         }
+    }
+
+    /// 返ってきた JSON から、撮った日の画面を開くのに要る分だけ取り出す。
+    /// 読めなくても送信自体は成功しているので、空のまま返して先へ進める。
+    private static func parseCreated(_ data: Data?) -> Created {
+        guard let data,
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let cut = root["cut"] as? [String: Any]
+        else { return Created(cutId: nil, logId: nil, localDate: nil) }
+        return Created(
+            cutId: cut["id"] as? String,
+            logId: cut["logId"] as? String,
+            localDate: cut["localDate"] as? String
+        )
     }
 
     // MARK: - Cookie
