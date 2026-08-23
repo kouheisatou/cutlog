@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraMetadata
@@ -210,24 +211,9 @@ class CaptureActivity : AppCompatActivity() {
             // 端末の補正を使うことがこのアプリの目的なので、効いているかを画面に出す。
             binding.stabilizationText.text =
                 "手ぶれ補正\n" + if (videoStabilization) "あり" else "この端末では使えない"
-            showOpeningHints(videoStabilization && !previewStabilization)
+            binding.hintText.setText(R.string.capture_hint_landscape)
             buildZoomStops(bound)
         }, ContextCompat.getMainExecutor(this))
-    }
-
-    /**
-     * 最初に出す短い注意書き。
-     * プレビューには補正が乗らない端末では、その断りを先に出してから通常の案内へ戻す。
-     */
-    private fun showOpeningHints(previewUnstabilized: Boolean) {
-        if (previewUnstabilized) {
-            binding.hintText.setText(R.string.capture_hint_stabilization)
-            mainHandler.postDelayed({
-                if (recording == null) binding.hintText.setText(R.string.capture_hint_landscape)
-            }, 4000)
-        } else {
-            binding.hintText.setText(R.string.capture_hint_landscape)
-        }
     }
 
     /** 前と後ろの両方があるときだけ、切り替えのボタンを効かせる。 */
@@ -259,6 +245,11 @@ class CaptureActivity : AppCompatActivity() {
         val stops = listOf(0.5f, 1f, 2f, 3f, 5f)
             .filter { it >= state.minZoomRatio && it <= state.maxZoomRatio }
         if (stops.size < 2) return
+        // ★既定の画角（等倍）に合わせてから見せる。
+        //   端末によっては始まりが 0.5× や中途半端な倍率になっていて、
+        //   どれも選ばれていない見た目になってしまう。
+        val base = if (stops.contains(1f)) 1f else stops.first()
+        bound.cameraControl.setZoomRatio(base)
         val density = resources.displayMetrics.density
         for (stop in stops) {
             val button = TextView(this).apply {
@@ -270,7 +261,7 @@ class CaptureActivity : AppCompatActivity() {
                 minWidth = (40 * density).toInt()
                 setPadding((8 * density).toInt(), (5 * density).toInt(),
                     (8 * density).toInt(), (5 * density).toInt())
-                isSelected = stop == state.zoomRatio
+                isSelected = stop == base
                 setOnClickListener {
                     camera?.cameraControl?.setZoomRatio(stop)
                     for (i in 0 until binding.zoomRow.childCount) {
@@ -404,7 +395,7 @@ class CaptureActivity : AppCompatActivity() {
                                 .putExtra(EXTRA_LOG_ID, res.logId)
                                 .putExtra(EXTRA_LOCAL_DATE, res.localDate),
                         )
-                        finish()
+                        finishAfterPortrait()
                     }
                     is Uploader.Result.Failed -> finishWithError(res.message)
                 }
@@ -450,7 +441,20 @@ class CaptureActivity : AppCompatActivity() {
 
     private fun finishWithError(message: String) {
         setResult(RESULT_CANCELED, Intent().putExtra(EXTRA_ERROR, message))
-        finish()
+        finishAfterPortrait()
+    }
+
+    /**
+     * 先に画面を縦へ戻してから閉じる。
+     *
+     * ★そのまま閉じると、下の Web が横のまま一瞬見えて、そのあと縦に直る。
+     *   撮影画面がまだ覆っているうちに戻しておけば、その切り替わりは目に入らない。
+     */
+    private fun finishAfterPortrait() {
+        if (requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) return
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        // 向きが変わりきるのを待つ。待たずに閉じると、戻す前の絵が見えてしまう。
+        mainHandler.postDelayed({ finish() }, 250)
     }
 
     companion object {

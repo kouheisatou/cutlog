@@ -63,6 +63,8 @@ final class CameraSession: NSObject {
                     self.session.startRunning()
                     // ★走らせてからでないと、効いている補正は分からない
                     self.confirmStabilization()
+                    // 既定の画角（広角）にそろえてから見せる
+                    self.resetZoomToDefault()
                     DispatchQueue.main.async { completion(.success(())) }
                 } catch {
                     DispatchQueue.main.async { completion(.failure(error)) }
@@ -168,9 +170,10 @@ final class CameraSession: NSObject {
                 session.addInput(old)   // 戻せないときは元へ
             }
             session.commitConfiguration()
-            // 入力が変われば形式も変わる。補正は選び直しになる。
+            // 入力が変われば形式も変わる。補正も画角も選び直しになる。
             applyStabilization()
             confirmStabilization()
+            resetZoomToDefault()
             DispatchQueue.main.async { completion() }
         }
     }
@@ -208,6 +211,20 @@ final class CameraSession: NSObject {
         // 切り替わる点が 2 つ以上あるなら超広角つき。最初の点が広角の始まり。
         let switchOvers = device.virtualDeviceSwitchOverVideoZoomFactors.map { CGFloat(truncating: $0) }
         return switchOvers.count >= 2 ? switchOvers[0] : 1
+    }
+
+    /// 既定の画角に合わせる。
+    ///
+    /// ★複合カメラは倍率 1.0 が超広角なので、そのままだと 0.5× で始まってしまう。
+    ///   端末の標準のカメラは広角（1×）で始まるので、こちらもそこへそろえる。
+    func resetZoomToDefault() {
+        guard let device else { return }
+        let want = max(1, min(zoomBase, maxZoomFactor))
+        do {
+            try device.lockForConfiguration()
+            defer { device.unlockForConfiguration() }
+            device.videoZoomFactor = want
+        } catch { }
     }
 
     func setZoom(_ factor: CGFloat) {

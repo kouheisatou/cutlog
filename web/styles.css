@@ -41,6 +41,17 @@
 }
 
 * { box-sizing: border-box; }
+
+/* サムネは読み終わってからふわっと出す。
+   ★作った瞬間から出すと、絵が入るまでの一瞬だけ下地が見えて、
+     一覧を作り直すたびにちらついて見える。 */
+img.tn { opacity: 0; }
+img.tn.ready { opacity: 1; }
+@media (prefers-reduced-motion: no-preference) {
+  img.tn { transition: opacity .18s ease; }
+}
+
+
 [hidden] { display: none !important; }
 
 /* アイコンの型紙。並びの中で高さを作らないよう、流れから外しておく。
@@ -781,16 +792,27 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
 .stage:hover .stage-badge { opacity: 1; transition: opacity .12s ease; }
 
 /* 通しの目盛り。クリップの区切りは細い隙間で示す（1本に見えつつ、境目も分かる） */
+/* 進み具合は、カットごとの区切りで見せる（setlog と同じ考え方）。
+   まだのぶんは薄く、済んだぶんは濃く。いま流れているところだけが伸びていく。
+   任意の位置へは飛ばず、押した区切りの頭から流し直す。 */
 .scrub {
-  position: relative; height: 22px; margin: 0; cursor: pointer;
-  display: flex; align-items: center; touch-action: none;
+  display: flex; align-items: center; gap: 3px;
+  height: 22px; margin: 0; padding: 0 var(--s4);
 }
-.scrub .segs { display: flex; gap: 2px; width: 100%; height: 4px; }
-.scrub .segs i { display: block; height: 100%; background: var(--hair); }
-.scrub .head {
-  position: absolute; top: 50%; left: 0; width: 2px; height: 14px;
-  background: var(--ink); transform: translate(-1px, -50%); pointer-events: none;
+.scrub .seg {
+  position: relative; height: 4px; padding: 8px 0; background: none;
+  overflow: visible; cursor: pointer; min-width: 4px;
 }
+/* 押せる範囲は指の届く高さにしつつ、見た目は細い線のままにする */
+.scrub .seg::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 50%;
+  height: 4px; transform: translateY(-50%); background: var(--hair);
+}
+.scrub .seg .fill {
+  position: absolute; left: 0; top: 50%; height: 4px; width: 0;
+  transform: translateY(-50%); background: var(--ink); transform-origin: left center;
+}
+.scrub .seg.now .fill { background: var(--ink); }
 
 .player .controls { display: flex; align-items: center; gap: var(--s1); }
 .player .controls .icon-btn { width: 38px; height: 38px; }

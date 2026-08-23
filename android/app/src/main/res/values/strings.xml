@@ -10,10 +10,6 @@
     <string name="capture_flip">前と後ろを切り替える</string>
     <string name="capture_kind_video">動画</string>
     <string name="capture_hint_landscape">横向きの範囲で記録されます</string>
-    <!-- ★これを先に出すのは、実際に迷うところだからである。
-         端末の補正は録画される映像にだけ効き、この画面（プレビュー）には乗らない。
-         知らないと「効いていない」と見えてしまう。 -->
-    <string name="capture_hint_stabilization">手ぶれ補正は録画された映像にだけ効きます</string>
     <string name="capture_preparing">カメラを準備しています…</string>
     <string name="capture_sending">送信中…</string>
 </resources>

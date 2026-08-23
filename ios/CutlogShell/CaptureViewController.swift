@@ -89,7 +89,7 @@ final class CaptureViewController: UIViewController {
                 attachPreview()
                 buildZoomStops()
                 updateStabilizationLabel()
-                showOpeningHints()
+                hintLabel.text = "横向きの範囲で記録されます"
                 shutter.isEnabled = true
                 flipButton.isEnabled = true
                 UIView.animate(withDuration: 0.2) { self.shutter.alpha = 1 }
@@ -112,7 +112,11 @@ final class CaptureViewController: UIViewController {
     }
 
     // 撮影は横向き固定。Info.plist で横を許可し、ここで縦を落とす。
-    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .landscape }
+    // 閉じるときだけ縦を許して、先に向きを戻してから下の Web を出す。
+    private var allowPortrait = false
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        allowPortrait ? .portrait : .landscape
+    }
     override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation { .landscapeRight }
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
@@ -308,25 +312,6 @@ final class CaptureViewController: UIViewController {
         }
     }
 
-    /// 最初に出す短い注意書き。
-    ///
-    /// ★手ぶれ補正の断りを先に出すのは、これが実際に迷うところだからである。
-    ///   iOS の補正は録画される映像にだけ効き、この画面（プレビュー）には乗らない。
-    ///   知らないと「効いていない」と見えてしまう。
-    private func showOpeningHints() {
-        if camera.activeStabilizationName != "なし" {
-            hintLabel.text = "手ぶれ補正は録画された映像にだけ効きます"
-            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
-                guard let self, !camera.isRecording else { return }
-                UIView.transition(with: hintLabel, duration: 0.2, options: .transitionCrossDissolve) {
-                    self.hintLabel.text = "横向きの範囲で記録されます"
-                }
-            }
-        } else {
-            hintLabel.text = "横向きの範囲で記録されます"
-        }
-    }
-
     /// 効いている補正を出す。
     /// ★プレビューには補正が乗らないので、画を見ても効いているかは分からない。
     ///   ここの表示だけが手がかりになる。
@@ -428,7 +413,20 @@ final class CaptureViewController: UIViewController {
         shutter.stopRecording()
         camera.stop()
         location.stop()
-        finish(outcome)
+        rotateToPortrait { [weak self] in self?.finish(outcome) }
+    }
+
+    /// 先に画面を縦へ戻してから、続きを行う。
+    ///
+    /// ★閉じてから戻すと、下の Web が横のまま一瞬見えて、そのあと縦に直る。
+    ///   撮影画面がまだ覆っているうちに戻しておけば、その切り替わりは目に入らない。
+    private func rotateToPortrait(_ done: @escaping () -> Void) {
+        guard let scene = view.window?.windowScene else { done(); return }
+        allowPortrait = true
+        setNeedsUpdateOfSupportedInterfaceOrientations()
+        scene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait)) { _ in }
+        // 向きが変わりきるのを待つ。待たずに閉じると、戻す前の絵が見えてしまう。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: done)
     }
 }
 
