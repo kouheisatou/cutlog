@@ -74,7 +74,34 @@ cd flutter_ui
 | all-search（検索） | できた | 3.00% |
 | cut（カットの詳細） | できた | 10.07%（下記） |
 
-## iOS で動かす
+## 端末で動かす
+
+### iPhone 実機（release）
+
+```bash
+flutter build ios --release --dart-define=CUTLOG_BASE=https://appserver.tail7ca50.ts.net:8787
+flutter install --release -d <端末のID>        # flutter devices で調べる
+xcrun devicectl device process launch --device <devicectl のID> dev.cutlog.cutlog
+```
+
+- 行き先は既存の殻（`native.env`）と同じ Tailscale の口。素の http ではないので、
+  外の網からでも届く。
+- 手元の網の中で素の http を使うときのために、`NSAllowsLocalNetworking` を入れてある。
+  ★ 実機では `localhost` は端末自身を指す。母艦の住所（`ipconfig getifaddr en0`）か
+    Tailscale の名前を渡すこと。
+
+### Android
+
+```bash
+flutter build apk --debug
+```
+
+- ★ Java 25 では Kotlin の道具が版番号を読めずに落ちる（`What went wrong: 25.0.2` だけが出る）。
+  JDK 21 を入れて `flutter config --jdk-dir=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home`
+  を指してある。
+- Android SDK も 36 が要る（`sdkmanager "platforms;android-36"`）。
+
+## iOS シミュレータで動かす
 
 ```bash
 flutter build ios --simulator --debug --dart-define=CUTLOG_BASE=http://localhost:8787

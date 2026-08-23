@@ -66,5 +66,22 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- 手元のサーバへ素のまま（http）つなぐのは、同じ網の中だけ許す。
+		     外へは許さない。 -->
+		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>同じ網の中にあるcutlogのサーバへつなぎます。</string>
+	<key>NSCameraUsageDescription</key>
+	<string>その場を短く撮って残すために、カメラを使います。</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>撮った映像に音を入れるために、マイクを使います。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>端末に残っている動画から取り込むために、写真を読みます。</string>
 </dict>
 </plist>
