@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'data/api.dart';
+import 'data/media.dart';
 import 'data/models.dart';
 import 'data/push.dart';
 import 'design/text.dart';
@@ -244,7 +245,7 @@ class _HostState extends State<_Host> {
   Future<void> _sheetCut(BuildContext context, Cut cut) => openCutSheet(
         context,
         cut: cut,
-        mediaUrl: _api.mediaUrl,
+        media: _media,
         onDelete: () async {
           final String? bad = await _api.deleteCut(cut.id);
           if (bad == null) await _reload();
@@ -422,6 +423,7 @@ class _HostState extends State<_Host> {
         final Cut? last = _cuts.isEmpty ? null : _cuts.first;
         return ReviewScreen(
           url: last == null ? null : _api.mediaUrl(last.url),
+          headers: _api.mediaHeaders,
           destination: last?.logName,
           onClose: () => Navigator.of(context).maybePop(),
         );
@@ -472,7 +474,7 @@ class _HostState extends State<_Host> {
             padding: EdgeInsets.only(bottom: 57 + MediaQuery.paddingOf(context).bottom),
             child: MapScreen(
               cuts: _cuts,
-              mediaUrl: _api.mediaUrl,
+              media: _media,
               tileUrl: (_config['mapTileUrl'] as String?) ??
                   'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
             ),
@@ -534,7 +536,7 @@ class _HostState extends State<_Host> {
           child: DayScreen(
             date: _day ?? _newestDay,
             cuts: day,
-            mediaUrl: _api.mediaUrl,
+            media: _media,
             onBack: () => setState(() => _stack = 'log'),
           ),
         );
@@ -550,13 +552,17 @@ class _HostState extends State<_Host> {
     }
   }
 
+  /// 絵や動画の取りに行き方。道とヘッダを組にして画面へ渡す。
+  /// ★ ブラウザは cookie を勝手に付けるが、端末では誰も付けない。組にして渡し忘れを無くす。
+  Media get _media => Media(_api.mediaUrl, _api.mediaHeaders);
+
   Widget _logsScreen() => Screen(
         tab: 'logs',
         onTab: _selectTab,
         child: Builder(
           builder: (BuildContext context) => LogsScreen(
             logs: _visibleLogs,
-            mediaUrl: _api.mediaUrl,
+            media: _media,
             onOpen: _openLog,
             onSearch: () => openLogSearchSheet(
               context,
@@ -574,7 +580,7 @@ class _HostState extends State<_Host> {
         child: Builder(
           builder: (BuildContext context) => AllScreen(
             cuts: _visibleCuts,
-            mediaUrl: _api.mediaUrl,
+            media: _media,
             onOpen: (Cut c) => _sheetCut(context, c),
             onSearch: () => openSearchSheet(
               context,

@@ -4,6 +4,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/widgets.dart';
 
+import '../data/media.dart';
 import '../data/models.dart';
 import '../design/icons.dart';
 import '../design/text.dart';
@@ -14,14 +15,14 @@ class LogsScreen extends StatelessWidget {
   const LogsScreen({
     super.key,
     required this.logs,
-    required this.mediaUrl,
+    required this.media,
     this.onOpen,
     this.onSearch,
     this.onAdd,
   });
 
   final List<LogItem> logs;
-  final String Function(String path) mediaUrl;
+  final Media media;
   final ValueChanged<LogItem>? onOpen;
   final VoidCallback? onSearch;
   final VoidCallback? onAdd;
@@ -50,7 +51,7 @@ class LogsScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: logs
-                    .map((LogItem l) => _LogRow(log: l, mediaUrl: mediaUrl, onTap: () => onOpen?.call(l)))
+                    .map((LogItem l) => _LogRow(log: l, media: media, onTap: () => onOpen?.call(l)))
                     .toList(),
               ),
             ),
@@ -63,10 +64,10 @@ class LogsScreen extends StatelessWidget {
 
 /// CSS: .log-row — 48px / 1fr / 16px の3列。行の高さは中身で決まる（下限 68px）。
 class _LogRow extends StatelessWidget {
-  const _LogRow({required this.log, required this.mediaUrl, this.onTap});
+  const _LogRow({required this.log, required this.media, this.onTap});
 
   final LogItem log;
-  final String Function(String path) mediaUrl;
+  final Media media;
   final VoidCallback? onTap;
 
   @override
@@ -90,7 +91,7 @@ class _LogRow extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: <Widget>[
-            _Thumb(log: log, mediaUrl: mediaUrl),
+            _Thumb(log: log, media: media),
             SizedBox(width: sp.s2),
             Expanded(
               child: Column(
@@ -122,10 +123,10 @@ class _LogRow extends StatelessWidget {
 
 /// CSS: .log-thumb — 48px の四角。絵が無いときは、下地の上に印だけを置く。
 class _Thumb extends StatelessWidget {
-  const _Thumb({required this.log, required this.mediaUrl});
+  const _Thumb({required this.log, required this.media});
 
   final LogItem log;
-  final String Function(String path) mediaUrl;
+  final Media media;
 
   @override
   Widget build(BuildContext context) {
@@ -142,7 +143,7 @@ class _Thumb extends StatelessWidget {
       alignment: Alignment.center,
       child: url == null
           ? Ic(log.isPrivate ? 'lock' : 'film', size: 18, color: c.mute)
-          : CachedNetworkImage(imageUrl: mediaUrl(url), width: 48, height: 48, fit: BoxFit.cover),
+          : CachedNetworkImage(imageUrl: media.url(url), httpHeaders: media.headers, width: 48, height: 48, fit: BoxFit.cover),
     );
   }
 }

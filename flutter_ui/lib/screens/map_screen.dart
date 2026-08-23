@@ -9,6 +9,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../data/media.dart';
 import '../data/models.dart';
 import '../design/text.dart';
 import '../design/tokens.dart';
@@ -17,13 +18,13 @@ class MapScreen extends StatefulWidget {
   const MapScreen({
     super.key,
     required this.cuts,
-    required this.mediaUrl,
+    required this.media,
     required this.tileUrl,
     this.onOpen,
   });
 
   final List<Cut> cuts;
-  final String Function(String path) mediaUrl;
+  final Media media;
   final String tileUrl;
   final ValueChanged<List<Cut>>? onOpen;
 
@@ -146,7 +147,7 @@ class _MapScreenState extends State<MapScreen> {
         alignment: Alignment.center,
         child: GestureDetector(
           onTap: () => widget.onOpen?.call(g),
-          child: _Pin(cut: head, count: g.length, mediaUrl: widget.mediaUrl),
+          child: _Pin(cut: head, count: g.length, media: widget.media),
         ),
       );
     }).toList();
@@ -155,11 +156,11 @@ class _MapScreenState extends State<MapScreen> {
 
 /// CSS: .map-pin — 44px の丸。白い縁を回し、束ねたものは数を右上に出す。
 class _Pin extends StatelessWidget {
-  const _Pin({required this.cut, required this.count, required this.mediaUrl});
+  const _Pin({required this.cut, required this.count, required this.media});
 
   final Cut cut;
   final int count;
-  final String Function(String path) mediaUrl;
+  final Media media;
 
   @override
   Widget build(BuildContext context) {
@@ -186,7 +187,7 @@ class _Pin extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: cut.thumbUrl == null
               ? null
-              : CachedNetworkImage(imageUrl: mediaUrl(cut.thumbUrl!), fit: BoxFit.cover),
+              : CachedNetworkImage(imageUrl: media.url(cut.thumbUrl!), httpHeaders: media.headers, fit: BoxFit.cover),
         ),
         if (count > 1)
           Positioned(

@@ -9,6 +9,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/widgets.dart';
 import 'package:video_player/video_player.dart';
 
+import '../data/media.dart';
 import '../data/models.dart';
 import '../design/text.dart';
 import '../design/tokens.dart';
@@ -19,13 +20,13 @@ class DayScreen extends StatefulWidget {
     super.key,
     required this.date,
     required this.cuts,
-    required this.mediaUrl,
+    required this.media,
     this.onBack,
   });
 
   final String date;
   final List<Cut> cuts;
-  final String Function(String path) mediaUrl;
+  final Media media;
   final VoidCallback? onBack;
 
   @override
@@ -62,7 +63,11 @@ class _DayScreenState extends State<DayScreen> {
     final Cut cut = widget.cuts[i];
 
     final VideoPlayerController next =
-        VideoPlayerController.networkUrl(Uri.parse(widget.mediaUrl(cut.url)));
+        VideoPlayerController.networkUrl(
+      Uri.parse(widget.media.url(cut.url)),
+      // ★ cookie を添えないと 401 になり、黒いまま何も起きない
+      httpHeaders: widget.media.headers,
+    );
     // 進み具合の線を動かすため、再生位置の変化をそのまま画面へ流す
     next.addListener(_tick);
     try {
@@ -70,7 +75,7 @@ class _DayScreenState extends State<DayScreen> {
       await next.initialize().timeout(const Duration(seconds: 6));
     } catch (e) {
       // ★ 黙って黒いままにしない。読めなかったことが分かるようにする。
-      debugPrint('cutlog: 動画を開けません ${widget.mediaUrl(cut.url)} — $e');
+      debugPrint('cutlog: 動画を開けません ${widget.media.url(cut.url)} — $e');
       await next.dispose();
       return;
     }
@@ -109,7 +114,7 @@ class _DayScreenState extends State<DayScreen> {
     if (_index >= widget.cuts.length) return const SizedBox.expand();
     final String? thumb = widget.cuts[_index].thumbUrl;
     if (thumb == null) return const SizedBox.expand();
-    return Center(child: CachedNetworkImage(imageUrl: widget.mediaUrl(thumb), fit: BoxFit.contain));
+    return Center(child: CachedNetworkImage(imageUrl: widget.media.url(thumb), httpHeaders: widget.media.headers, fit: BoxFit.contain));
   }
 
   @override
@@ -183,7 +188,7 @@ class _DayScreenState extends State<DayScreen> {
                 child: _WheelRow(
                   cut: widget.cuts[i],
                   current: i == _index,
-                  mediaUrl: widget.mediaUrl,
+                  media: widget.media,
                 ),
               ),
             ),
@@ -237,11 +242,11 @@ class _ProgressLine extends StatelessWidget {
 /// ドラムの1行。いまのカットの行を、そのまま目盛りにしたもの。
 /// 真ん中の1行だけ、左に2pxの印を立てる（web の .clip-row.now と同じしるし）。
 class _WheelRow extends StatelessWidget {
-  const _WheelRow({required this.cut, required this.current, required this.mediaUrl});
+  const _WheelRow({required this.cut, required this.current, required this.media});
 
   final Cut cut;
   final bool current;
-  final String Function(String path) mediaUrl;
+  final Media media;
 
   @override
   Widget build(BuildContext context) {
@@ -272,7 +277,7 @@ class _WheelRow extends StatelessWidget {
             clipBehavior: Clip.hardEdge,
             child: cut.thumbUrl == null
                 ? null
-                : CachedNetworkImage(imageUrl: mediaUrl(cut.thumbUrl!), fit: BoxFit.cover),
+                : CachedNetworkImage(imageUrl: media.url(cut.thumbUrl!), httpHeaders: media.headers, fit: BoxFit.cover),
           ),
           SizedBox(width: sp.s2),
           Expanded(

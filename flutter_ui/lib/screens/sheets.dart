@@ -3,6 +3,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../data/media.dart';
 import '../data/models.dart';
 import '../design/text.dart';
 import '../design/tokens.dart';
@@ -197,7 +198,7 @@ class _MoveRow extends StatelessWidget {
 Future<void> openCutSheet(
   BuildContext context, {
   required Cut cut,
-  required String Function(String path) mediaUrl,
+  required Media media,
   required Future<String?> Function() onDelete,
   required Future<String?> Function(String body) onComment,
   required Future<String?> Function(String emoji) onReact,
@@ -230,7 +231,7 @@ Future<void> openCutSheet(
                   decoration: BoxDecoration(color: c.paper2),
                   child: cut.thumbUrl == null
                       ? null
-                      : CachedNetworkImage(imageUrl: mediaUrl(cut.thumbUrl!), fit: BoxFit.contain),
+                      : CachedNetworkImage(imageUrl: media.url(cut.thumbUrl!), httpHeaders: media.headers, fit: BoxFit.contain),
                 ),
               ),
             ),

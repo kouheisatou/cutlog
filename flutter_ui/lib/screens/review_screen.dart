@@ -19,6 +19,7 @@ class ReviewScreen extends StatefulWidget {
   const ReviewScreen({
     super.key,
     this.url,
+    this.headers = const <String, String>{},
     this.file,
     this.destination,
     this.onRetake,
@@ -28,6 +29,9 @@ class ReviewScreen extends StatefulWidget {
 
   /// 撮れたもの。端末に残る前の、その場かぎりの居場所。
   final String? url;
+
+  /// 取りに行くときに添えるヘッダ（cookie）
+  final Map<String, String> headers;
 
   /// 撮ったばかりのもの（まだサーバへ送っていない）
   final XFile? file;
@@ -60,7 +64,10 @@ class _ReviewScreenState extends State<ReviewScreen> {
     //   そのときは道として開く（File で開けない）。
     final XFile? f = widget.file;
     final VideoPlayerController p = f == null
-        ? VideoPlayerController.networkUrl(Uri.parse(widget.url ?? ''))
+        ? VideoPlayerController.networkUrl(
+            Uri.parse(widget.url ?? ''),
+            httpHeaders: widget.headers,
+          )
         : (kIsWeb
             ? VideoPlayerController.networkUrl(Uri.parse(f.path))
             : VideoPlayerController.file(File(f.path)));

@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <application
+        android:networkSecurityConfig="@xml/network_security_config"
         android:label="cutlog"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
