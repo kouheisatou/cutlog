@@ -225,7 +225,10 @@ class _Day extends StatelessWidget {
     final bool today = date ==
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
-    return GestureDetector(
+    return Semantics(
+      button: has,
+      label: '${date.substring(5).replaceAll('-', '月')}日、$count カット',
+      child: GestureDetector(
       onTap: has && onTap != null ? () => onTap!(date) : null,
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
@@ -258,6 +261,7 @@ class _Day extends StatelessWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }

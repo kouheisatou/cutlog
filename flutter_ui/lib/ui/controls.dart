@@ -35,15 +35,22 @@ class TextBtn extends StatelessWidget {
       ],
     );
 
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 44),
-        child: Align(
-          alignment: Alignment.center,
-          widthFactor: block ? null : 1,
-          child: row,
+    // ★ 名前を付ける。読み上げに要るのはもちろん、
+    //   絵で描く画面を外から掴んで試すときの手がかりにもなる。
+    return Semantics(
+      button: true,
+      label: label,
+      enabled: onTap != null,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44),
+          child: Align(
+            alignment: Alignment.center,
+            widthFactor: block ? null : 1,
+            child: row,
+          ),
         ),
       ),
     );
@@ -71,10 +78,15 @@ class PrimaryBtn extends StatelessWidget {
       child: Text(upper(label), style: Typo(c).btn.copyWith(color: c.selInk, decoration: TextDecoration.none)),
     );
 
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: block ? SizedBox(width: double.infinity, child: box) : IntrinsicWidth(child: box),
+    return Semantics(
+      button: true,
+      label: label,
+      enabled: onTap != null,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: block ? SizedBox(width: double.infinity, child: box) : IntrinsicWidth(child: box),
+      ),
     );
   }
 }
@@ -109,7 +121,11 @@ class MiniBtn extends StatelessWidget {
       ],
     );
 
-    return GestureDetector(
+    return Semantics(
+      button: true,
+      label: label,
+      enabled: onTap != null,
+      child: GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: primary
@@ -123,6 +139,7 @@ class MiniBtn extends StatelessWidget {
               constraints: const BoxConstraints(minHeight: 24, minWidth: 24),
               child: Align(alignment: Alignment.center, widthFactor: 1, child: row),
             ),
+      ),
     );
   }
 }

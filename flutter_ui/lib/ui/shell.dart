@@ -8,9 +8,22 @@ import 'controls.dart';
 
 /// CSS: .icon-btn — 44px の四角。見た目は薄く（opacity .7）、押せる範囲は広く取る。
 class IconBtn extends StatelessWidget {
-  const IconBtn(this.icon, {super.key, this.onTap, this.size = 44, this.color, this.opacity = .7, this.iconSize = 17, this.strokeWidth = 1.6});
+  const IconBtn(
+    this.icon, {
+    super.key,
+    this.onTap,
+    this.size = 44,
+    this.color,
+    this.opacity = .7,
+    this.iconSize = 17,
+    this.strokeWidth = 1.6,
+    this.label,
+  });
 
   final String icon;
+
+  /// 読み上げ用の名前。無ければ印の名前をそのまま使う。
+  final String? label;
   final VoidCallback? onTap;
   final double size;
   final Color? color;
@@ -20,16 +33,21 @@ class IconBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: Center(
-          child: Opacity(
-            opacity: opacity,
-            child: Ic(icon, size: iconSize, color: color ?? colorsOf(context).ink, strokeWidth: strokeWidth),
+    return Semantics(
+      button: true,
+      label: label ?? icon,
+      enabled: onTap != null,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Center(
+            child: Opacity(
+              opacity: opacity,
+              child: Ic(icon, size: iconSize, color: color ?? colorsOf(context).ink, strokeWidth: strokeWidth),
+            ),
           ),
         ),
       ),
@@ -129,7 +147,11 @@ class TabBarNav extends StatelessWidget {
         children: items.map((List<String> it) {
           final bool on = it[0] == current;
           return Expanded(
-            child: GestureDetector(
+            child: Semantics(
+              button: true,
+              selected: on,
+              label: it[2],
+              child: GestureDetector(
               onTap: onTap == null ? null : () => onTap!(it[0]),
               behavior: HitTestBehavior.opaque,
               child: Container(
@@ -144,6 +166,7 @@ class TabBarNav extends StatelessWidget {
                   ],
                 ),
               ),
+            ),
             ),
           );
         }).toList(),

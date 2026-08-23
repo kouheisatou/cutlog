@@ -160,7 +160,10 @@ class _PhotoCell extends StatelessWidget {
     final Palette c = colorsOf(context);
     final Typo t = Typo(c);
 
-    return GestureDetector(
+    return Semantics(
+      button: true,
+      label: '${cut.localDate} ${cut.hhmm} ${cut.logName ?? ''}',
+      child: GestureDetector(
       onTap: onOpen == null ? null : () => onOpen!(cut),
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
@@ -203,6 +206,7 @@ class _PhotoCell extends StatelessWidget {
             ),
           ),
         ],
+      ),
       ),
       ),
     );

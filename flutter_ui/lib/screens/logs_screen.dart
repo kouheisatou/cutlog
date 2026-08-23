@@ -74,7 +74,10 @@ class _LogRow extends StatelessWidget {
     final Typo t = Typo(c);
     final Space sp = spaceOf(context);
 
-    return GestureDetector(
+    return Semantics(
+      button: true,
+      label: '${log.name}、${log.subtitle}',
+      child: GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
@@ -110,6 +113,7 @@ class _LogRow extends StatelessWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }
