@@ -786,32 +786,27 @@ button.crumb:hover { color: var(--ink); text-decoration-color: currentColor; }
 .stage:hover .stage-badge { opacity: 1; transition: opacity .12s ease; }
 
 /* 通しの目盛り。クリップの区切りは細い隙間で示す（1本に見えつつ、境目も分かる） */
-/* 進み具合は、映像の上に重ねたカットごとの区切りで見せる（ストーリーと同じ形）。
-   まだのぶんは薄く、済んだぶんは白く。いま流れているところだけが伸びていく。
+/* カットひとつにつき、ひと区切り。いま流れているものだけが濃い。
+   ★時間に合わせて伸ばさない。細かく動くものが画の下にあると、
+     その動きの方に目が行ってしまう。どれを見ているかだけが分かればよい。
    任意の位置へは飛ばず、押した区切りの頭から流し直す。 */
 .segbar {
-  position: absolute; top: 0; left: 0; right: 0; z-index: 3;
-  display: flex; align-items: flex-start; gap: 3px;
-  padding: 10px 10px 20px;
-  /* 明るい映像の上でも白い線が見えるよう、上だけ薄く落とす */
-  background: linear-gradient(to bottom, rgba(0,0,0,.45), transparent);
-  /* 区切りの間や下の余白では、映像を押して止められるようにする */
-  pointer-events: none;
+  display: flex; align-items: center; gap: 3px;
+  padding: var(--s2) var(--s4) var(--s1);
 }
 .segbar .seg {
-  position: relative; flex: 1; height: 3px; padding: 6px 0; background: none;
-  overflow: visible; cursor: pointer; min-width: 3px;
-  pointer-events: auto;
+  position: relative; flex: 1; height: 3px; padding: 8px 0;
+  background: none; min-width: 3px; cursor: pointer;
 }
 /* 押せる範囲は指の届く高さにしつつ、見た目は細い線のままにする */
 .segbar .seg::before {
-  content: ''; position: absolute; left: 0; right: 0; top: 6px;
-  height: 3px; border-radius: 2px; background: rgba(255,255,255,.35);
+  content: ''; position: absolute; left: 0; right: 0; top: 50%;
+  height: 3px; transform: translateY(-50%);
+  border-radius: 2px; background: var(--hair);
 }
-.segbar .seg .fill {
-  position: absolute; left: 0; top: 6px; height: 3px; width: 0;
-  border-radius: 2px; background: #fff;
-  box-shadow: 0 0 3px rgba(0,0,0,.35);
+.segbar .seg.now::before { background: var(--ink); }
+@media (prefers-reduced-motion: no-preference) {
+  .segbar .seg::before { transition: background-color .16s ease; }
 }
 
 .player .controls { display: flex; align-items: center; gap: var(--s1); }

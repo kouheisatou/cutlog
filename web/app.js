@@ -1267,6 +1267,8 @@ async function buildPlaylist(cuts) {
 // ★任意の位置へは飛ばさない。押した区切りの頭から流し直す。
 //   1本の動画のふりをして途中へ飛ぶと、そのつど読み直しになって必ず一拍止まる。
 //   区切りの頭からと決めれば、次のぶんを先に用意しておくだけで途切れずに繋がる。
+// ★時間に合わせて伸ばさない。細かく動くものが画の下にあると、
+//   その動きの方に目が行ってしまう。どれを見ているかだけが分かればよい。
 function renderScrub() {
   const bar = $('#pvSegs');
   bar.innerHTML = '';
@@ -1276,40 +1278,24 @@ function renderScrub() {
     const seg = document.createElement('button');
     seg.type = 'button';
     seg.className = 'seg';
-    seg.style.flex = `${it.dur} 0 0`;
     seg.setAttribute('role', 'tab');
     seg.setAttribute('aria-label', `${i + 1}本目 ${fmtTime(it.cut.takenAt, it.cut.tzOffset)} から流す`);
-    const fill = document.createElement('i');
-    fill.className = 'fill';
-    seg.appendChild(fill);
     seg.addEventListener('click', () => showClip(i, 0, true));
     bar.appendChild(seg);
-    play.segs.push({ seg, fill });
+    play.segs.push(seg);
   });
   play.segIdx = -1;
-  paintSegs(true);
+  paintSegs();
 }
 
-// 区切りの見た目を更新する。
-// 済んだぶんと、まだのぶんは、出しているクリップが変わったときだけ書き換える。
-// 毎こま全部に触ると、そのぶんが再生の邪魔になる。
-function paintSegs(force = false) {
-  if (!play.segs?.length) return;
-  const i = play.idx;
-  if (force || play.segIdx !== i) {
-    play.segIdx = i;
-    play.segs.forEach(({ seg, fill }, n) => {
-      seg.classList.toggle('now', n === i);
-      seg.setAttribute('aria-selected', String(n === i));
-      if (n < i) fill.style.width = '100%';
-      else if (n > i) fill.style.width = '0%';
-    });
-  }
-  const cur = play.segs[i];
-  if (!cur) return;
-  const it = play.items[i];
-  const into = it ? Math.max(0, Math.min(it.dur, currentGlobal() - it.start)) : 0;
-  cur.fill.style.width = `${it ? (into / it.dur) * 100 : 0}%`;
+// いま流れている区切りに印を移す。出しているクリップが変わったときだけ呼ぶ。
+function paintSegs() {
+  if (!play.segs?.length || play.segIdx === play.idx) return;
+  play.segs[play.segIdx]?.classList.remove('now');
+  play.segs[play.segIdx]?.setAttribute('aria-selected', 'false');
+  play.segIdx = play.idx;
+  play.segs[play.idx]?.classList.add('now');
+  play.segs[play.idx]?.setAttribute('aria-selected', 'true');
 }
 
 // いま通しで何ミリ秒めか
@@ -1331,10 +1317,10 @@ function currentGlobal() {
 let paintedIdx = -1;
 
 function paintProgress() {
-  paintSegs();
   $('#pvClock').textContent = `${fmtClock(currentGlobal())} / ${fmtClock(play.total)}`;
   if (paintedIdx !== play.idx) {
     paintedIdx = play.idx;
+    paintSegs();
     const it = play.items[play.idx];
     // 左＝ログの題／中央＝メモ／右＝時刻。保存する動画と同じ並びにする。
     $('#ovLog').textContent = it ? (state.log?.name || '') : '';
