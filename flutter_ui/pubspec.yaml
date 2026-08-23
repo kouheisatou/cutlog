@@ -70,6 +70,10 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  assets:
+    # つなぎ先などの設定。中身は秘密ではない（.env.example と同じ形）。
+    - .env
+
   # web と同じ書体を同梱する。端末任せにすると字幅が変わり、同じ作りでも見え方がずれる。
   fonts:
     - family: Noto Sans JP
