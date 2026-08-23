@@ -11,12 +11,19 @@ import '../ui/flow.dart';
 import '../ui/shell.dart';
 
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key, required this.me, required this.pushHint});
+  const SettingsScreen({
+    super.key,
+    required this.me,
+    required this.pushHint,
+    this.onLogout,
+  });
 
   final Me me;
 
   /// 通知のキーが用意できているかの案内。サーバの返事をそのまま出す。
   final String pushHint;
+
+  final VoidCallback? onLogout;
 
   @override
   Widget build(BuildContext context) {

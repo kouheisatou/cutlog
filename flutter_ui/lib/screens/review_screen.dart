@@ -3,17 +3,23 @@
 //   これから撮る所が同じ画面に居ると、どちらの操作か分からなくなる。
 //   撮り終えたら画面ごと切り替え、映っているものだけを見せる。
 // ★ 地の色は撮影と同じ黒。撮ってから残すまで、明るさが変わらないようにする。
+import 'dart:io' show File;
+
+import 'package:camera/camera.dart' show XFile;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../design/icons.dart';
+import '../ui/shell.dart';
 import '../design/text.dart';
 import '../design/tokens.dart';
 
 class ReviewScreen extends StatefulWidget {
   const ReviewScreen({
     super.key,
-    required this.url,
+    this.url,
+    this.file,
     this.destination,
     this.onRetake,
     this.onSave,
@@ -21,13 +27,18 @@ class ReviewScreen extends StatefulWidget {
   });
 
   /// 撮れたもの。端末に残る前の、その場かぎりの居場所。
-  final String url;
+  final String? url;
+
+  /// 撮ったばかりのもの（まだサーバへ送っていない）
+  final XFile? file;
 
   /// どのログへ入るか。撮影の画面から持ち越す。
   final String? destination;
 
   final VoidCallback? onRetake;
-  final ValueChanged<String>? onSave;
+
+  /// ひとことを添えて残す。だめならその訳が返る。
+  final Future<String?> Function(String note)? onSave;
   final VoidCallback? onClose;
 
   @override
@@ -45,7 +56,14 @@ class _ReviewScreenState extends State<ReviewScreen> {
   }
 
   Future<void> _load() async {
-    final VideoPlayerController p = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+    // ★ 撮ったばかりのものは端末の中にある。web では blob の居場所になるので、
+    //   そのときは道として開く（File で開けない）。
+    final XFile? f = widget.file;
+    final VideoPlayerController p = f == null
+        ? VideoPlayerController.networkUrl(Uri.parse(widget.url ?? ''))
+        : (kIsWeb
+            ? VideoPlayerController.networkUrl(Uri.parse(f.path))
+            : VideoPlayerController.file(File(f.path)));
     p.addListener(() {
       if (mounted) setState(() {});
     });
@@ -72,6 +90,17 @@ class _ReviewScreenState extends State<ReviewScreen> {
     super.dispose();
   }
 
+  bool _saving = false;
+
+  Future<void> _save() async {
+    if (_saving || widget.onSave == null) return;
+    setState(() => _saving = true);
+    final String? bad = await widget.onSave!(_note.text.trim());
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (bad != null) toast(context, bad);
+  }
+
   void _toggle() {
     final VideoPlayerController? p = _player;
     if (p == null || !p.value.isInitialized) return;
@@ -92,7 +121,9 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
     return ColoredBox(
       color: camBackdrop,
-      child: Column(
+      child: Opacity(
+        opacity: _saving ? .5 : 1,
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           // ── 上：閉じると、どこへ入るか ────────────────
@@ -213,13 +244,14 @@ class _ReviewScreenState extends State<ReviewScreen> {
                   children: <Widget>[
                     _Action('撮り直し', onTap: widget.onRetake),
                     const Spacer(),
-                    _Action('保存', filled: true, onTap: () => widget.onSave?.call(_note.text)),
+                    _Action('保存', filled: true, onTap: _save),
                   ],
                 ),
               ],
             ),
           ),
         ],
+        ),
       ),
     );
   }

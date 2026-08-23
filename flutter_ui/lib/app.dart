@@ -9,6 +9,8 @@ import 'design/text.dart';
 import 'design/tokens.dart';
 import 'screens/all_screen.dart';
 import 'screens/auth_screen.dart';
+import 'package:camera/camera.dart' show XFile;
+
 import 'screens/capture_screen.dart';
 import 'screens/day_screen.dart';
 import 'screens/log_screen.dart';
@@ -18,6 +20,9 @@ import 'screens/logset_screen.dart';
 import 'screens/review_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/sheets.dart';
+import 'ui/controls.dart';
+import 'ui/flow.dart';
+import 'ui/sheet.dart';
 import 'ui/shell.dart';
 
 class CutlogApp extends StatelessWidget {
@@ -237,6 +242,101 @@ class _HostState extends State<_Host> {
         onReact: (String emoji) => _api.react(cut.id, emoji),
       );
 
+  /// 撮る → 確かめる → 残す。
+  /// ★ 撮った直後に送らない。確かめる画面を挟むのは、撮り直しの余地を残すため。
+  void _openCapture() {
+    final LogItem dest = _log ?? _target;
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (BuildContext _) => CaptureScreen(
+        destination: dest.name,
+        cutSeconds: dest.cutSeconds,
+        onClose: () => Navigator.of(context).maybePop(),
+        onShot: (XFile file, int durationMs) => _openReview(dest, file, durationMs),
+      ),
+    ));
+  }
+
+  void _openReview(LogItem dest, XFile file, int durationMs) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (BuildContext sheet) => ReviewScreen(
+        file: file,
+        destination: dest.name,
+        onRetake: () => Navigator.of(sheet).maybePop(),
+        onClose: () => Navigator.of(sheet).maybePop(),
+        onSave: (String note) async {
+          final DateTime now = DateTime.now();
+          final String? bad = await _api.uploadCut(
+            logId: dest.id,
+            bytes: await file.readAsBytes(),
+            filename: file.name.isEmpty ? 'cut.mp4' : file.name,
+            mime: file.name.endsWith('.webm') ? 'video/webm' : 'video/mp4',
+            meta: <String, dynamic>{
+              'kind': 'video',
+              'durationMs': durationMs,
+              'takenAt': now.toUtc().toIso8601String(),
+              'tzOffset': -now.timeZoneOffset.inMinutes,
+              'source': 'camera',
+              if (note.isNotEmpty) 'note': note,
+            },
+          );
+          if (bad != null) return bad;
+          await _reload();
+          if (!mounted) return null;
+          // 確かめる画面と撮影の画面を、まとめて畳む
+          Navigator.of(context).popUntil((Route<dynamic> r) => r.isFirst);
+          return null;
+        },
+      ),
+    ));
+  }
+
+  /// ゴミ箱。消したカットを戻せる。
+  Future<void> _openTrash(BuildContext context) async {
+    final List<Cut> gone = await _api.trash((_log ?? _target).id);
+    if (!context.mounted) return;
+    await openSheet<void>(
+      context,
+      children: <Widget>[
+        Builder(
+          builder: (BuildContext context) {
+            final Space sp = spaceOf(context);
+            return CssColumn(<Block>[
+              Block(const SheetTitle('ゴミ箱'), bottom: sp.s1),
+              if (gone.isEmpty)
+                Block(Text('消したカットはありません。', style: Typo.of(context).small), top: sp.s2)
+              else
+                for (final Cut c in gone)
+                  Block(
+                    Row(children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          '\${c.localDate} \${c.hhmm}　\${c.note ?? ''}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Typo.of(context).body.copyWith(fontSize: 14),
+                        ),
+                      ),
+                      MiniBtn('戻す', onTap: () async {
+                        final String? bad = await _api.restoreCut(c.id);
+                        if (!context.mounted) return;
+                        if (bad != null) {
+                          toast(context, bad);
+                          return;
+                        }
+                        Navigator.of(context).pop();
+                        await _reload();
+                      }),
+                    ]),
+                    top: sp.s1,
+                    bottom: sp.s1,
+                  ),
+            ], outer: false);
+          },
+        ),
+      ],
+    );
+  }
+
   /// 中身を取り直す（作った・消した・移した あとに呼ぶ）
   Future<void> _reload() async {
     final List<Object?> got = await Future.wait(<Future<Object?>>[
@@ -252,12 +352,7 @@ class _HostState extends State<_Host> {
 
   void _selectTab(String tab) {
     if (tab == 'camera') {
-      Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (BuildContext _) => CaptureScreen(
-          destination: _log?.name ?? _target.name,
-          onClose: () => Navigator.of(context).maybePop(),
-        ),
-      ));
+      _openCapture();
       return;
     }
     setState(() {
@@ -289,7 +384,7 @@ class _HostState extends State<_Host> {
       case 'review':
         final Cut? last = _cuts.isEmpty ? null : _cuts.first;
         return ReviewScreen(
-          url: last == null ? '' : _api.mediaUrl(last.url),
+          url: last == null ? null : _api.mediaUrl(last.url),
           destination: last?.logName,
           onClose: () => Navigator.of(context).maybePop(),
         );
@@ -298,9 +393,24 @@ class _HostState extends State<_Host> {
         return Screen(
           tab: 'settings',
           onTab: _selectTab,
-          child: SettingsScreen(
-            me: _me ?? Me(id: '', username: '', displayName: ''),
-            pushHint: _pushHint,
+          child: Builder(
+            builder: (BuildContext context) => SettingsScreen(
+              me: _me ?? Me(id: '', username: '', displayName: ''),
+              pushHint: _pushHint,
+              onLogout: () async {
+                final bool yes = await confirm(context, 'ログアウトしますか？', 'ログアウト');
+                if (!yes) return;
+                await _api.logout();
+                if (!mounted) return;
+                setState(() {
+                  _needAuth = true;
+                  _logs = <LogItem>[];
+                  _cuts = <Cut>[];
+                  _tab = 'logs';
+                  _stack = 'logs';
+                });
+              },
+            ),
           ),
         );
 
@@ -352,6 +462,21 @@ class _HostState extends State<_Host> {
                   ])
               .toList(),
           onBack: () => setState(() => _stack = 'log'),
+          onSave: (String name, int seconds) async {
+            final String? bad = await _api.renameLog(
+              (_log ?? _target).id,
+              name: name,
+              cutSeconds: seconds,
+            );
+            if (bad == null) await _reload();
+            return bad;
+          },
+          onRotate: () async {
+            final String? bad = await _api.rotateInvite((_log ?? _target).id);
+            if (bad == null) await _reload();
+            return bad;
+          },
+          onTrash: () => _openTrash(context),
         );
 
       case 'day':

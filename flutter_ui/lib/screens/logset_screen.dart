@@ -1,6 +1,7 @@
 // このログの設定。web の #logSetScreen をそのまま写す。
 // ★ ログに関わることは全部ここに集める（題・長さ・招待・参加者・共有・ゴミ箱）。
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../data/models.dart';
 import '../design/text.dart';
@@ -9,12 +10,15 @@ import '../ui/controls.dart';
 import '../ui/flow.dart';
 import '../ui/shell.dart';
 
-class LogSetScreen extends StatelessWidget {
+class LogSetScreen extends StatefulWidget {
   const LogSetScreen({
     super.key,
     required this.log,
     required this.members,
     this.onBack,
+    this.onSave,
+    this.onRotate,
+    this.onTrash,
   });
 
   final LogItem log;
@@ -24,17 +28,55 @@ class LogSetScreen extends StatelessWidget {
 
   final VoidCallback? onBack;
 
+  /// 題と長さを直す。だめならその訳が返る。
+  final Future<String?> Function(String name, int seconds)? onSave;
+
+  /// 招待コードを作り直す
+  final Future<String?> Function()? onRotate;
+
+  /// 消したカットを見る
+  final VoidCallback? onTrash;
+
+  @override
+  State<LogSetScreen> createState() => _LogSetScreenState();
+}
+
+class _LogSetScreenState extends State<LogSetScreen> {
+  late final TextEditingController _name = TextEditingController(text: widget.log.name);
+  late final TextEditingController _seconds =
+      TextEditingController(text: '${widget.log.cutSeconds}');
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _seconds.dispose();
+    super.dispose();
+  }
+
+  Future<void> _run(Future<String?> Function() job, String done) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final String? bad = await job();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    toast(context, bad ?? done);
+  }
+
   @override
   Widget build(BuildContext context) {
     final Palette c = colorsOf(context);
     final Typo t = Typo(c);
     final Space sp = spaceOf(context);
+    final LogItem log = widget.log;
 
-    return Column(
+    return Opacity(
+      opacity: _busy ? .5 : 1,
+      child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         TopBar(children: <Widget>[
-          IconBtn('back', onTap: onBack),
+          IconBtn('back', onTap: widget.onBack),
           Crumbs(items: <String>['ログ', log.name, '設定']),
         ]),
         Expanded(
@@ -45,14 +87,14 @@ class LogSetScreen extends StatelessWidget {
               Block(_row(<Widget>[
                 _Label('タイトル', t),
                 SizedBox(width: sp.s2),
-                _Field(width: 220, value: log.name),
+                _Field(width: 220, controller: _name),
               ]), top: sp.s2, bottom: sp.s2),
 
               // 1カットの長さ
               Block(_row(<Widget>[
                 _Label('1クリップの長さ', t),
                 SizedBox(width: sp.s2),
-                _Field(width: 72, value: '${log.cutSeconds}'),
+                _Field(width: 72, controller: _seconds, digits: true),
                 SizedBox(width: sp.s3),
                 Text('秒', style: t.small),
               ]), top: sp.s2, bottom: sp.s2),
@@ -76,24 +118,36 @@ class LogSetScreen extends StatelessWidget {
                 bottom: sp.s2,
               ),
 
-              Block(_row(<Widget>[const PrimaryBtn('保存')]), top: sp.s2, bottom: sp.s2),
+              Block(_row(<Widget>[
+                PrimaryBtn('保存', onTap: () => _run(
+                      () => widget.onSave!(
+                        _name.text.trim(),
+                        int.tryParse(_seconds.text.trim()) ?? log.cutSeconds,
+                      ),
+                      '保存しました',
+                    )),
+              ]), top: sp.s2, bottom: sp.s2),
 
               // 招待
               Block(_SectionHead('招待', t), top: sp.s5, bottom: sp.s1),
               Block(_row(<Widget>[
                 Text(log.inviteCode ?? '', style: t.body.copyWith(letterSpacing: 2.7)),
                 SizedBox(width: sp.s3),
-                const MiniBtn('コピー', icon: 'copy'),
+                MiniBtn('コピー', icon: 'copy', onTap: () async {
+                  await Clipboard.setData(ClipboardData(text: log.inviteCode ?? ''));
+                  if (context.mounted) toast(context, 'コピーしました');
+                }),
                 SizedBox(width: sp.s3),
-                const MiniBtn('再生成'),
+                MiniBtn('再生成', onTap: () => _run(widget.onRotate!, '作り直しました')),
               ]), top: sp.s2, bottom: sp.s2),
 
               // 参加者
-              Block(_SectionHead('参加者', t, trailing: '${members.length}人'), top: sp.s5, bottom: sp.s1),
+              Block(_SectionHead('参加者', t, trailing: '${widget.members.length}人'),
+                  top: sp.s5, bottom: sp.s1),
               Block(
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: members
+                  children: widget.members
                       .map((List<Object> m) => _Member(name: m[0] as String, owner: m[1] as bool))
                       .toList(),
                 ),
@@ -107,11 +161,14 @@ class LogSetScreen extends StatelessWidget {
 
               // ゴミ箱
               Block(_SectionHead('ゴミ箱', t), top: sp.s5, bottom: sp.s1),
-              Block(_row(<Widget>[const TextBtn('削除したカットを表示', icon: 'trash')]), top: sp.s2, bottom: sp.s2),
+              Block(_row(<Widget>[
+                TextBtn('削除したカットを表示', icon: 'trash', onTap: widget.onTrash),
+              ]), top: sp.s2, bottom: sp.s2),
             ]),
           ),
         ),
       ],
+      ),
     );
   }
 
@@ -132,10 +189,11 @@ class _Label extends StatelessWidget {
 
 /// CSS: .panel-row input — 囲まず、下の1本だけで書く場所を示す。
 class _Field extends StatelessWidget {
-  const _Field({required this.width, required this.value});
+  const _Field({required this.width, required this.controller, this.digits = false});
 
   final double width;
-  final String value;
+  final TextEditingController controller;
+  final bool digits;
 
   @override
   Widget build(BuildContext context) {
@@ -143,9 +201,21 @@ class _Field extends StatelessWidget {
     return SizedBox(
       width: width,
       child: Container(
+        // 高さは決め打ち。CSS の「余白 6 ＋ 行 23.8 ＋ 余白 6 ＋ 線 1」に合わせる。
+        height: 36.8,
         padding: const EdgeInsets.symmetric(vertical: 6),
         decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.hair))),
-        child: Text(value, style: Typo(c).panelInput),
+        child: TextField(
+          controller: controller,
+          keyboardType: digits ? TextInputType.number : TextInputType.text,
+          style: Typo(c).panelInput,
+          cursorColor: c.ink,
+          decoration: const InputDecoration(
+            isDense: true,
+            border: InputBorder.none,
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
       ),
     );
   }

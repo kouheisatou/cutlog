@@ -1,0 +1,14 @@
+# アプリのしるし。web/icon.svg（サービスのしるし）を焼いた1枚から、各 OS のぶんを作る。
+# 作り直すとき: dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: assets/icon/cutlog.png
+  # 地は白に寄せた薄いベージュ。しるしと同じ色を敷く。
+  adaptive_icon_background: "#f7f4ee"
+  adaptive_icon_foreground: assets/icon/cutlog.png
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  web:
+    generate: true
+    background_color: "#f7f4ee"
+    theme_color: "#f7f4ee"

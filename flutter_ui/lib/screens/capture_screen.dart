@@ -4,49 +4,131 @@
 // ★ 文字と選択肢は置かない。進み具合はシャッターの輪だけで知らせる。
 import 'dart:math' as math;
 
+import 'package:camera/camera.dart';
 import 'package:flutter/widgets.dart';
 
 import '../design/icons.dart';
 import '../design/text.dart';
 import '../design/tokens.dart';
+import '../ui/shell.dart';
 
 class CaptureScreen extends StatefulWidget {
-  const CaptureScreen({super.key, this.destination, this.preview, this.onClose});
+  const CaptureScreen({
+    super.key,
+    this.destination,
+    this.onClose,
+    this.onShot,
+    this.cutSeconds = 2,
+  });
 
   /// どのログへ入るか
   final String? destination;
 
-  /// 端末のカメラの映像。無ければ黒いまま。
-  final Widget? preview;
-
   final VoidCallback? onClose;
+
+  /// 撮れたものを渡す。確かめる画面へ進むのは呼んだ側の仕事。
+  final void Function(XFile file, int durationMs)? onShot;
+
+  /// 1カットの長さ（秒）。ログごとに違う。
+  final int cutSeconds;
 
   @override
   State<CaptureScreen> createState() => _CaptureScreenState();
 }
 
 class _CaptureScreenState extends State<CaptureScreen> with SingleTickerProviderStateMixin {
-  /// 1カットの長さ。CSS の --cut-seconds（既定 2s）にあたる。
-  static const Duration _cutLength = Duration(seconds: 2);
-
   /// よく使う倍率だけ。増やすと押しにくくなる。
   static const List<double> _stops = <double>[1, 2, 4];
 
-  late final AnimationController _ring = AnimationController(vsync: this, duration: _cutLength);
+  late final AnimationController _ring =
+      AnimationController(vsync: this, duration: Duration(seconds: widget.cutSeconds));
+
+  List<CameraDescription> _cameras = <CameraDescription>[];
+  CameraController? _cam;
+  int _lens = 0;
   double _zoom = 1;
+  double _zoomMin = 1;
+  double _zoomMax = 4;
+  bool _busy = false;
 
   bool get _recording => _ring.isAnimating;
 
   @override
+  void initState() {
+    super.initState();
+    _open();
+  }
+
+  /// 端末のカメラを開く。
+  /// ★ はじめは端末が選び分けてくれる背面のカメラを使う（いちばん写りがよい）。
+  Future<void> _open([int at = 0]) async {
+    try {
+      if (_cameras.isEmpty) _cameras = await availableCameras();
+      if (_cameras.isEmpty) return;
+      final CameraController next = CameraController(
+        _cameras[at % _cameras.length],
+        ResolutionPreset.high,
+        enableAudio: true,
+      );
+      await next.initialize();
+      final double lo = await next.getMinZoomLevel();
+      final double hi = await next.getMaxZoomLevel();
+      final CameraController? old = _cam;
+      if (!mounted) {
+        await next.dispose();
+        return;
+      }
+      setState(() {
+        _cam = next;
+        _lens = at % _cameras.length;
+        _zoomMin = lo;
+        _zoomMax = hi;
+        _zoom = lo;
+      });
+      await old?.dispose();
+    } catch (e) {
+      if (mounted) toast(context, 'カメラを開けません（$e）');
+    }
+  }
+
+  @override
   void dispose() {
     _ring.dispose();
+    _cam?.dispose();
     super.dispose();
   }
 
-  void _shoot() {
-    if (_recording) return;
-    _ring.forward(from: 0);
-    setState(() {});
+  /// 1カットぶんだけ撮る。終わりはシャッターの輪が知らせるので、数字では出さない。
+  Future<void> _shoot() async {
+    final CameraController? cam = _cam;
+    if (_busy || _recording || cam == null || !cam.value.isInitialized) return;
+    setState(() => _busy = true);
+    try {
+      await cam.startVideoRecording();
+      _ring.forward(from: 0);
+      setState(() {});
+      await Future<void>.delayed(Duration(seconds: widget.cutSeconds));
+      final XFile file = await cam.stopVideoRecording();
+      _ring.stop();
+      if (!mounted) return;
+      setState(() => _busy = false);
+      widget.onShot?.call(file, widget.cutSeconds * 1000);
+    } catch (e) {
+      _ring.stop();
+      if (!mounted) return;
+      setState(() => _busy = false);
+      toast(context, '撮れませんでした（$e）');
+    }
+  }
+
+  Future<void> _setZoom(double v) async {
+    final double next = v.clamp(_zoomMin, _zoomMax);
+    setState(() => _zoom = next);
+    try {
+      await _cam?.setZoomLevel(next);
+    } catch (_) {
+      // 寄れない端末では、そのままにする
+    }
   }
 
   @override
@@ -62,7 +144,14 @@ class _CaptureScreenState extends State<CaptureScreen> with SingleTickerProvider
           Positioned.fill(
             child: ColoredBox(
               color: camBackdrop,
-              child: widget.preview ?? const SizedBox.expand(),
+              child: _cam == null || !_cam!.value.isInitialized
+                  ? const SizedBox.expand()
+                  : Center(
+                      child: AspectRatio(
+                        aspectRatio: _cam!.value.aspectRatio,
+                        child: CameraPreview(_cam!),
+                      ),
+                    ),
             ),
           ),
 
@@ -89,7 +178,8 @@ class _CaptureScreenState extends State<CaptureScreen> with SingleTickerProvider
                   if ((widget.destination ?? '').isNotEmpty) Flexible(child: _CapDest(widget.destination!)),
                   SizedBox(width: sp.s2),
                   const Spacer(),
-                  if (!_recording) const _LightBtn('flip'),
+                  if (!_recording && _cameras.length > 1)
+                    _LightBtn('flip', onTap: () => _open(_lens + 1)),
                 ],
               ),
             ),
@@ -114,8 +204,10 @@ class _CaptureScreenState extends State<CaptureScreen> with SingleTickerProvider
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  _ZoomRow(zoom: _zoom, stops: _stops, onZoom: (double v) => setState(() => _zoom = v)),
-                  SizedBox(height: sp.s2),
+                  if (_zoomMax > _zoomMin) ...<Widget>[
+                    _ZoomRow(zoom: _zoom, stops: _stops, onZoom: _setZoom),
+                    SizedBox(height: sp.s2),
+                  ],
                   ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 520),
                     child: Row(
