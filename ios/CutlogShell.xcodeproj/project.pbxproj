@@ -28,7 +28,7 @@
 		85EFB7ED002F05214CBC219A /* LocationProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationProvider.swift; sourceTree = "<group>"; };
 		AF1DE8C7E0205D5327FCB442 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		B25F29C8D8CEDC6CDBE9FFEB /* CaptureRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureRequest.swift; sourceTree = "<group>"; };
-		B3870F9B2798B44A50E44E84 /* CutlogShell.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CutlogShell.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B3870F9B2798B44A50E44E84 /* cutlog.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = cutlog.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C92F0BB1EECCDAA63F1B08F7 /* CutUploader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CutUploader.swift; sourceTree = "<group>"; };
 		E1B44A0576ADE74673EE6E3D /* WebViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewController.swift; sourceTree = "<group>"; };
 		F1862C33505F6CA8AE9E7463 /* CaptureViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureViewController.swift; sourceTree = "<group>"; };
@@ -56,7 +56,7 @@
 		7615BBD383CF435F6FFD99D9 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				B3870F9B2798B44A50E44E84 /* CutlogShell.app */,
+				B3870F9B2798B44A50E44E84 /* cutlog.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -96,7 +96,7 @@
 			packageProductDependencies = (
 			);
 			productName = CutlogShell;
-			productReference = B3870F9B2798B44A50E44E84 /* CutlogShell.app */;
+			productReference = B3870F9B2798B44A50E44E84 /* cutlog.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -315,6 +315,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = CutlogShell/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.video";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -336,6 +337,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = CutlogShell/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.video";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

@@ -30,6 +30,7 @@ final class CaptureViewController: UIViewController {
     private var countdownTimer: Timer?
     private var recordingStartedAt: Date?
     private var didFinish = false
+    private var didStartSetup = false
 
     init(request: CaptureRequest, finish: @escaping (Outcome) -> Void) {
         self.request = request
@@ -46,15 +47,29 @@ final class CaptureViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .black
         buildUI()
+    }
 
-        // 位置は撮り終わってから使うので、ここで先に走らせておく。
-        // 測位を待って撮影開始が遅れるのが一番困る。
-        location.start()
+    /// カメラの用意は「画面が出きってから」始める。
+    ///
+    /// viewDidLoad で始めると、カメラが無い・許可が無いといった失敗が
+    /// せり上がりのアニメーションの最中に返ってくる。その最中の dismiss は UIKit に無視され、
+    /// しかも didFinish が立つので閉じるボタンも効かなくなり、撮影画面から出られなくなる。
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        guard !didStartSetup else { return }
+        didStartSetup = true
 
         camera.configure { [weak self] result in
             guard let self else { return }
             switch result {
             case .success:
+                // 位置は撮り終わってから使うので、ここで先に走らせておく。
+                // 測位を待って撮影開始が遅れるのが一番困る。
+                //
+                // ただし「カメラが用意できてから」でないと始めない。
+                // カメラで失敗するとこの画面はすぐ閉じるが、位置情報の許可ダイアログは
+                // 画面より長生きして Web の上に取り残されてしまうためである。
+                location.start()
                 attachPreview()
                 stabilizationLabel.text = "手ぶれ補正: \(camera.stabilizationLabel)"
                 statusLabel.text = "\(Int(request.seconds)) 秒撮ります"
@@ -188,6 +203,12 @@ final class CaptureViewController: UIViewController {
 
     @objc private func tapClose() {
         if camera.isRecording { camera.stopRecording() }
+        // すでに結果を返したのに画面が残っている場合の逃げ道。
+        // complete は一度きりなので、ここで自分から閉じないと出られなくなる。
+        guard !didFinish else {
+            presentingViewController?.dismiss(animated: true)
+            return
+        }
         complete(.cancelled)
     }
 

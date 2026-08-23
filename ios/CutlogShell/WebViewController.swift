@@ -6,9 +6,9 @@ import WebKit
 final class WebViewController: UIViewController {
     private let serverURL: URL
     private var webView: WKWebView!
-    private let progress = UIProgressView(progressViewStyle: .bar)
+    /// 読み込み中に出すクルクル。iOS の作法どおり画面の中央に置く。
+    private let spinner = UIActivityIndicatorView(style: .large)
     private var errorView: UIView?
-    private var progressObservation: NSKeyValueObservation?
 
     /// JS 側のハンドラ名。Web の実装（app.js）と揃える。
     private static let bridgeName = "cutlog"
@@ -32,7 +32,7 @@ final class WebViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
         setUpWebView()
-        setUpProgress()
+        setUpSpinner()
         setUpSettingsGesture()
         load()
     }
@@ -63,6 +63,11 @@ final class WebViewController: UIViewController {
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         // Web 側が自前でスクロールを持つ画面なので、端でのバウンドは邪魔になる
         webView.scrollView.bounces = false
+        // 読み込み中は WebView がまだ何も描いていない。
+        // 地の色を画面と揃えておかないと、白や黒が一瞬差し込んで切り替わりが唐突になる。
+        webView.backgroundColor = .systemBackground
+        webView.scrollView.backgroundColor = .systemBackground
+        webView.isOpaque = false
         #if DEBUG
         // Safari の Web インスペクタから中を見られるようにする（開発時のみ）
         if webView.responds(to: Selector(("setInspectable:"))) {
@@ -72,20 +77,32 @@ final class WebViewController: UIViewController {
         view.addSubview(webView)
     }
 
-    private func setUpProgress() {
-        progress.translatesAutoresizingMaskIntoConstraints = false
-        progress.alpha = 0
-        view.addSubview(progress)
+    private func setUpSpinner() {
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        // 止めたら消えるようにしておく。読み込み中だけ見えていればよい。
+        spinner.hidesWhenStopped = true
+        // 白地の Web に黒い点が並ぶだけにしたいので、色は文字の副色に合わせる
+        spinner.color = .secondaryLabel
+        view.addSubview(spinner)
         NSLayoutConstraint.activate([
-            progress.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            progress.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            progress.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor),
         ])
-        progressObservation = webView.observe(\.estimatedProgress, options: .new) { [weak self] web, _ in
-            guard let self else { return }
-            progress.progress = Float(web.estimatedProgress)
-            let busy = web.estimatedProgress < 1.0
-            UIView.animate(withDuration: 0.2) { self.progress.alpha = busy ? 1 : 0 }
+    }
+
+    /// 読み込み中の見せ方。
+    /// 進捗の細い棒はブラウザの作法で、iOS のアプリでは中央のクルクルが自然なのでそちらにした。
+    private func setLoading(_ loading: Bool) {
+        if loading {
+            spinner.alpha = 1
+            spinner.startAnimating()
+        } else {
+            // ぱっと消すと切り替わりが唐突なので、薄くしてから止める
+            UIView.animate(withDuration: 0.2) {
+                self.spinner.alpha = 0
+            } completion: { _ in
+                self.spinner.stopAnimating()
+            }
         }
     }
 
@@ -123,6 +140,7 @@ final class WebViewController: UIViewController {
 
     private func load() {
         removeErrorView()
+        setLoading(true)
         // キャッシュの取り違えで古い app.js が出ると橋渡しが噛み合わないため、
         // 起動時だけはサーバに問い合わせ直す。
         var request = URLRequest(url: serverURL)
@@ -181,10 +199,27 @@ final class WebViewController: UIViewController {
         if let error { payload["error"] = error }
         let json = (try? JSONSerialization.data(withJSONObject: payload))
             .flatMap { String(data: $0, encoding: .utf8) } ?? #"{"ok":false,"error":"内部エラー"}"#
-        // 殻が古い Web を掴んでいて cutlogNative が居ない場合に例外を出さないよう、存在を見てから呼ぶ
-        let js = "window.cutlogNative && window.cutlogNative.onResult(\(json));"
-        webView.evaluateJavaScript(js) { _, err in
-            if let err { NSLog("[cutlog] onResult の呼び出しに失敗: \(err)") }
+        // 殻が古い Web を掴んでいて cutlogNative が居ない場合に例外を出さないよう、存在を見てから呼ぶ。
+        //
+        // 返り値を JS の式のままにしておくと、onResult が async 関数なので Promise が返り、
+        // evaluateJavaScript が「対応していないタイプの結果」（WKError 5）を毎回投げていた。
+        // 呼べたかどうかだけ分かればよいので、即時関数で包んで真偽値に潰す。
+        let js = """
+        (function () {
+          var n = window.cutlogNative;
+          if (!n || typeof n.onResult !== 'function') { return false; }
+          n.onResult(\(json));
+          return true;
+        })();
+        """
+        webView.evaluateJavaScript(js) { value, err in
+            if let err {
+                NSLog("[cutlog] onResult の呼び出しに失敗: \(err.localizedDescription)")
+            } else if (value as? Bool) != true {
+                // Web 側の窓口がまだ用意されていない（読み込み途中など）。
+                // 落とすほどのことではないが、結果が握り潰されたことは残しておく。
+                NSLog("[cutlog] cutlogNative.onResult がまだ居ないので結果を渡せませんでした")
+            }
         }
     }
 
@@ -253,7 +288,12 @@ private final class BridgeProxy: NSObject, WKScriptMessageHandler {
 // MARK: - ナビゲーション
 
 extension WebViewController: WKNavigationDelegate {
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        setLoading(true)
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        setLoading(false)
         removeErrorView()
     }
 
@@ -270,6 +310,7 @@ extension WebViewController: WKNavigationDelegate {
     }
 
     private func handle(_ error: Error) {
+        setLoading(false)
         let ns = error as NSError
         // 別の遷移で打ち切られただけのものはエラー画面にしない
         if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled { return }
