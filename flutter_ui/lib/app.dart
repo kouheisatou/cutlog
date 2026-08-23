@@ -15,6 +15,7 @@ import 'screens/log_screen.dart';
 import 'screens/logs_screen.dart';
 import 'screens/logset_screen.dart';
 import 'screens/review_screen.dart';
+import 'screens/sheets.dart';
 import 'screens/settings_screen.dart';
 import 'ui/shell.dart';
 
@@ -116,6 +117,10 @@ class _HostState extends State<_Host> {
     }
   }
 
+  /// 札の下に見えている画面。開いたときの下地をそろえるため、同じものを使い回す。
+  Widget _logsScreen() => Screen(tab: 'logs', child: LogsScreen(logs: _logs!, mediaUrl: _api.mediaUrl));
+  Widget _allScreen() => Screen(tab: 'all', child: AllScreen(cuts: _cuts, mediaUrl: _api.mediaUrl));
+
   /// 見比べで開くログ。中身があるものを選ぶ。
   LogItem get _target => _logs!.firstWhere(
         (LogItem l) => l.name == 'まいにち',
@@ -189,16 +194,16 @@ class _HostState extends State<_Host> {
             destination: last?.logName,
           );
         }
+      case 'logs-add':
+        return LogAddSheet(under: _logsScreen());
+      case 'logs-search':
+        return LogSearchSheet(under: _logsScreen());
+      case 'all-search':
+        return SearchSheet(under: _allScreen());
       case 'all':
-        return Screen(
-          tab: 'all',
-          child: AllScreen(cuts: _cuts, mediaUrl: _api.mediaUrl),
-        );
+        return _allScreen();
       case 'logs':
-        return Screen(
-          tab: 'logs',
-          child: LogsScreen(logs: _logs!, mediaUrl: _api.mediaUrl),
-        );
+        return _logsScreen();
       default:
         return _Note('$_shot はまだ作っていません');
     }

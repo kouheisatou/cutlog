@@ -63,15 +63,15 @@ cd flutter_ui
 | review（撮影後の確認） | 作った | 対象外 |
 | map（マップ） | まだ | — |
 | capture（撮影） | 下書きあり（`tool/parity/capture_screen.dart.wip`） | — |
-| logs-add / logs-search / all-search / cut（シート） | まだ | — |
+| logs-add（ログを追加） | できた | 1.84% |
+| logs-search（ログを検索） | できた | 1.56% |
+| all-search（検索） | できた | 2.63% |
+| cut（カットの詳細） | まだ | — |
 
 ## 次にやること（上から順に）
 
-1. **シート4つ**（logs-add / logs-search / all-search / cut）。
-   どれも `.panel`（下からせり上がる白い札）の中身が違うだけ。まず `.panel` の器を
-   `lib/ui/sheet.dart` に作り、4つはその中身として書く。
-   器の寸法: 幅 min(640,100%) / 角 18px 上だけ / 影 `0 -8px 40px rgba(0,0,0,.22)` /
-   余白 s4（≤880px）/ 掴み手 40×4px 角丸 999 を上に中央、下に s3。
+1. **cut（カットの詳細のシート）**。`lib/ui/sheet.dart` の器に載せる。中身は
+   映像・題・操作・反応・値の表・コメント。`shots/probe/cut.json` に座標がある。
 2. **map**。地図そのものは外の部品に任せる（web は Leaflet 同梱）。
    Flutter では `flutter_map` を足すか、まずピンと件数の帯だけ作って地図は後回しでもよい。
 3. **capture**。`tool/parity/capture_screen.dart.wip` に下書きがある。
