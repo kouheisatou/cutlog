@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  時間の軸を抽象にしたしるし。白地に細い黒の線だけ。
+  時間の軸を抽象にしたしるし。薄いベージュの地に、濃いグレーの細い線だけ。
   ・横一本が時間の流れ、縦の線が刻み。長い刻みと短い刻みで目盛りらしく見せる
   ・軸から立ち上がる線とその先の丸は、その時刻に記録があることを表す
-  ・丸と線のあいだは、はっきり分かるだけ空ける（線の端が丸いぶんも見込む）
-  ・アダプティブアイコンは外周が切り落とされるので、絵は中央 72dp に収める
+  ・立ち上がる線は、上（丸まで）と下（刻みまで）を同じだけ空ける
+  ・座標は web/icon.svg（1024）を 108 に換算したもの。両者で形がずれないようにする
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -14,37 +14,37 @@
 
     <!-- 時間の軸 -->
     <path
-        android:pathData="M23,62.5 h62"
-        android:strokeColor="#101012"
-        android:strokeWidth="1.9"
+        android:pathData="M26.79,62.44 H81.21"
+        android:strokeColor="#2E2F33"
+        android:strokeWidth="1.27"
         android:strokeLineCap="round" />
 
     <!-- 長い刻み（区切り） -->
     <path
-        android:pathData="M23,54 v17 M54,54 v17 M85,54 v17"
-        android:strokeColor="#101012"
-        android:strokeWidth="1.9"
+        android:pathData="M26.79,51.47 V68.34 M54.0,51.47 V68.34 M81.21,51.47 V68.34"
+        android:strokeColor="#2E2F33"
+        android:strokeWidth="1.27"
         android:strokeLineCap="round" />
 
     <!-- 短い刻み（その間） -->
     <path
-        android:pathData="M38.5,58 v9 M69.5,58 v9"
-        android:strokeColor="#101012"
-        android:strokeWidth="1.9"
+        android:pathData="M40.39,57.59 V67.29 M67.61,57.59 V67.29"
+        android:strokeColor="#2E2F33"
+        android:strokeWidth="1.27"
         android:strokeLineCap="round" />
 
     <!-- 軸から立ち上がる線 -->
     <path
-        android:pathData="M38.5,44 v10 M69.5,38 v16"
-        android:strokeColor="#101012"
-        android:strokeWidth="1.9"
+        android:pathData="M40.39,49.36 V54.0 M67.61,45.25 V54.0"
+        android:strokeColor="#2E2F33"
+        android:strokeWidth="1.27"
         android:strokeLineCap="round" />
 
     <!-- 立ち上がった先の丸 -->
     <path
-        android:pathData="M38.5,40 m-1.9,0 a1.9,1.9 0 1,0 3.8,0 a1.9,1.9 0 1,0 -3.8,0"
-        android:fillColor="#101012" />
+        android:pathData="M40.39,45.04 m-1.37,0 a1.37,1.37 0 1,0 2.74,0 a1.37,1.37 0 1,0 -2.74,0"
+        android:fillColor="#2E2F33" />
     <path
-        android:pathData="M69.5,34 m-1.9,0 a1.9,1.9 0 1,0 3.8,0 a1.9,1.9 0 1,0 -3.8,0"
-        android:fillColor="#101012" />
+        android:pathData="M67.61,40.92 m-1.37,0 a1.37,1.37 0 1,0 2.74,0 a1.37,1.37 0 1,0 -2.74,0"
+        android:fillColor="#2E2F33" />
 </vector>
