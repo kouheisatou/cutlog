@@ -1,0 +1,14 @@
+# ビルド生成物と、端末ごとに変わるもの。追跡しない。
+*.iml
+.gradle/
+/local.properties
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.keystore
+!gradle/wrapper/gradle-wrapper.jar

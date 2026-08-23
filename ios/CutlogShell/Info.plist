@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>ja_JP</string>
+	<key>CFBundleDisplayName</key>
+	<string>cutlog</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+
+	<!-- ストーリーボードを使わないので、起動画面は空の辞書で宣言する。
+	     これが無いと画面いっぱいに描かれず、レターボックス表示になる。 -->
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string></string>
+	</dict>
+
+	<!-- 撮影画面は横向きで撮るため、横向きも許可しておく必要がある。
+	     WebView 側は縦を基本にするが、画面ごとに個別に制限する。 -->
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+
+	<!-- 権限の説明。App Store の審査でも実機の初回ダイアログでもそのまま出る。 -->
+	<key>NSCameraUsageDescription</key>
+	<string>カットを撮影するためにカメラを使います。手ぶれ補正を効かせるため、ブラウザではなくアプリのカメラで録画します。</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>カットの音声を一緒に記録するためにマイクを使います。</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>撮った場所を地図に表示するために、撮影中だけ位置情報を使います。許可しなくても撮影はできます。</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>撮ったカットを端末の写真に残す場合に使います。</string>
+
+	<!-- 自己ホストの cutlog は社内 LAN や .local で動かすことがある。
+	     公開ドメイン（既定の Tailscale の ts.net）は正規の証明書なので例外は要らないが、
+	     ローカルネットワーク宛だけは平文でも繋がるようにしておく。 -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>同じネットワーク内で動かしている cutlog のサーバに接続します。</string>
+
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+</dict>
+</plist>

@@ -9,3 +9,5 @@ dev-log/
 # サーバごとの上書き（ポートの開き方など）
 docker-compose.override.yml
 .env.bak
+# ネイティブの殻がつなぐ先（環境ごとに違うので git には入れない）
+native.env

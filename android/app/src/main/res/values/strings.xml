@@ -1,0 +1,10 @@
+<resources>
+    <!-- ランチャー名は build.gradle.kts の manifestPlaceholders（native.env 由来）で入る。
+         ここの app_name は、その値が無いときの控えとして残してある。 -->
+    <string name="app_name">cutlog</string>
+    <string name="error_title">つながりませんでした</string>
+    <string name="error_retry">もう一度ためす</string>
+    <string name="error_hint">つなぐ先はビルドのときに埋め込まれます。変えるにはリポジトリのルートの native.env を書き換えて、入れ直してください。</string>
+    <string name="capture_start">録画</string>
+    <string name="capture_cancel">やめる</string>
+</resources>

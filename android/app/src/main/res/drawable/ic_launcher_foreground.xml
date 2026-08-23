@@ -1,0 +1,13 @@
+<!-- 「カット＝切り取った一片」を丸と切れ目で表しただけの、素朴な印 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#3b82f6"
+        android:pathData="M54,30a24,24 0,1 0,0.1 0zM54,40a14,14 0,1 1,-0.1 0z" />
+    <path
+        android:fillColor="#e5e7eb"
+        android:pathData="M50,20h8v14h-8z" />
+</vector>

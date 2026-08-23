@@ -1,0 +1,11 @@
+# ビルド生成物。作り直せるものは追跡しない。
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcuserdatad/
+.DS_Store
+
+# native.env から毎ビルド作り直す設定。
+# 中身に自分のサーバの住所が入るので、なおさら git には入れない。
+CutlogShell/Generated/
