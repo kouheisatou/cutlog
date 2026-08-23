@@ -25,40 +25,37 @@ class CutlogApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       title: 'cutlog',
       debugShowCheckedModeBanner: false,
-      home: _Root(),
-    );
-  }
-}
-
-class _Root extends StatelessWidget {
-  const _Root();
-
-  @override
-  Widget build(BuildContext context) {
-    final MediaQueryData mq = MediaQuery.of(context);
-    final bool dark = mq.platformBrightness == Brightness.dark;
-
-    return Skin(
-      palette: dark ? Palette.darkMode : Palette.lightMode,
-      space: Space.forWidth(mq.size.width),
-      child: Builder(
-        builder: (BuildContext context) => Material(
-          // ★ 書く所（TextField）は Material の下に居ないと組み上がらない。
-          //   見た目は足したくないので、透けたものを1枚だけ敷く。
-          type: MaterialType.transparency,
-          child: DefaultTextStyle(
-            // ★ 敷かないと、字の指定が無い所に Flutter の目印（黄色い二重下線）が出る。
-            style: Typo.of(context).body,
-            child: ColoredBox(
-              color: colorsOf(context).paper,
-              child: const _Host(),
+      // ★ 配色と余白は、道案内（Navigator）より外側で配る。
+      //   札やダイアログは道案内の上に積まれるので、内側で配ると
+      //   その中から見えず、中身が組み上がらないまま黙って消える。
+      //   実際、それで「開くのに何も出ない札」になっていた。
+      builder: (BuildContext context, Widget? child) {
+        final MediaQueryData mq = MediaQuery.of(context);
+        final bool dark = mq.platformBrightness == Brightness.dark;
+        return Skin(
+          palette: dark ? Palette.darkMode : Palette.lightMode,
+          space: Space.forWidth(mq.size.width),
+          child: Builder(
+            builder: (BuildContext context) => Material(
+              // ★ 書く所（TextField）は Material の下に居ないと組み上がらない。
+              //   見た目は足したくないので、透けたものを1枚だけ敷く。
+              type: MaterialType.transparency,
+              child: DefaultTextStyle(
+                // ★ 敷かないと、字の指定が無い所に Flutter の目印（黄色い二重下線）が出る。
+                style: Typo.of(context).body,
+                child: ColoredBox(
+                  color: colorsOf(context).paper,
+                  child: child ?? const SizedBox.shrink(),
+                ),
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
+      home: const _Host(),
     );
   }
 }
@@ -91,8 +88,8 @@ class _HostState extends State<_Host> {
   Map<String, dynamic> _logDetail = <String, dynamic>{};
   String? _day;
   List<Cut> _dayCuts = <Cut>[];
-  String? _sheet;                         // 開いている札
-  Cut? _cut;
+  String _logFilter = '';                 // ログ一覧の絞り込み
+  String _cutFilter = '';                 // カット一覧の絞り込み
 
   @override
   void initState() {
@@ -122,7 +119,10 @@ class _HostState extends State<_Host> {
         _cuts = got[3]! as List<Cut>;
       });
       // 見比べのときは、決まったログを開いた状態にしておく
-      if (_shot != null) await _openLog(_target, quiet: true);
+      if (_shot != null) {
+        await _openLog(_target, quiet: true);
+        _openShotSheet();
+      }
     } catch (e) {
       if (!mounted) return;
       // 鍵が無い・切れているときは、ログインの画面を出す。それ以外は訳を出す。
@@ -147,6 +147,26 @@ class _HostState extends State<_Host> {
     });
     await _load();
     return null;
+  }
+
+  /// 見比べのときだけ、指した札を自分で開く。
+  /// ★ 札は標準の仕組みで押し出すので、絵に写すには実際に開いておく必要がある。
+  void _openShotSheet() {
+    final String? name = _shot;
+    if (name == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      switch (name) {
+        case 'logs-add':
+          _sheetLogAdd(context);
+        case 'logs-search':
+          openLogSearchSheet(context, initial: '', onSearch: (String _) {});
+        case 'all-search':
+          openSearchSheet(context, initial: '', onSearch: (String _) {});
+        case 'cut':
+          if (_cuts.isNotEmpty) _sheetCut(context, _cuts.first);
+      }
+    });
   }
 
   /// 見比べで開くログ。中身があるものを選ぶ。
@@ -189,9 +209,55 @@ class _HostState extends State<_Host> {
     });
   }
 
+  // ── 札を開く ────────────────────────────────────────
+  Future<void> _sheetLogAdd(BuildContext context) => openLogAddSheet(
+        context,
+        onCreate: (String name) async {
+          final String? bad = await _api.createLog(name);
+          if (bad == null) await _reload();
+          return bad;
+        },
+        onJoin: (String code) async {
+          final String? bad = await _api.joinLog(code);
+          if (bad == null) await _reload();
+          return bad;
+        },
+      );
+
+  Future<void> _sheetCut(BuildContext context, Cut cut) => openCutSheet(
+        context,
+        cut: cut,
+        mediaUrl: _api.mediaUrl,
+        onDelete: () async {
+          final String? bad = await _api.deleteCut(cut.id);
+          if (bad == null) await _reload();
+          return bad;
+        },
+        onComment: (String body) => _api.addComment(cut.id, body),
+        onReact: (String emoji) => _api.react(cut.id, emoji),
+      );
+
+  /// 中身を取り直す（作った・消した・移した あとに呼ぶ）
+  Future<void> _reload() async {
+    final List<Object?> got = await Future.wait(<Future<Object?>>[
+      _api.logs(), _api.allCuts(),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _logs = got[0]! as List<LogItem>;
+      _cuts = got[1]! as List<Cut>;
+    });
+    if (_log != null) await _openLog(_log!, quiet: true);
+  }
+
   void _selectTab(String tab) {
     if (tab == 'camera') {
-      setState(() => _sheet = 'capture');
+      Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (BuildContext _) => CaptureScreen(
+          destination: _log?.name ?? _target.name,
+          onClose: () => Navigator.of(context).maybePop(),
+        ),
+      ));
       return;
     }
     setState(() {
@@ -206,37 +272,8 @@ class _HostState extends State<_Host> {
     if (_needAuth && _shot == null) return AuthScreen(onSubmit: _signIn);
     if (_logs == null) return const SizedBox.shrink();
 
-    final String where = _shot ?? _current;
-    final Widget page = _pageFor(where);
-
-    // 札は、いま見えている画面の上に重ねる
-    switch (_sheet ?? (_shot != null && _isSheet(_shot!) ? _shot! : null)) {
-      case 'logs-add':
-        return LogAddSheet(under: page);
-      case 'logs-search':
-        return LogSearchSheet(under: page);
-      case 'all-search':
-        return SearchSheet(under: page);
-      case 'cut':
-        if (_cut != null) {
-          return CutSheet(under: page, cut: _cut!, mediaUrl: _api.mediaUrl);
-        }
-        if (_cuts.isNotEmpty) {
-          return CutSheet(under: page, cut: _cuts.first, mediaUrl: _api.mediaUrl);
-        }
-        return page;
-      case 'capture':
-        return CaptureScreen(
-          destination: _log?.name ?? _target.name,
-          onClose: () => setState(() => _sheet = null),
-        );
-      default:
-        return page;
-    }
+    return _pageFor(_shot ?? _current);
   }
-
-  bool _isSheet(String name) =>
-      <String>['logs-add', 'logs-search', 'all-search', 'cut', 'capture'].contains(name);
 
   /// タブと深さから、いまの画面の名前を出す
   String get _current {
@@ -254,7 +291,7 @@ class _HostState extends State<_Host> {
         return ReviewScreen(
           url: last == null ? '' : _api.mediaUrl(last.url),
           destination: last?.logName,
-          onClose: () => setState(() => _sheet = null),
+          onClose: () => Navigator.of(context).maybePop(),
         );
 
       case 'settings':
@@ -347,28 +384,46 @@ class _HostState extends State<_Host> {
   Widget _logsScreen() => Screen(
         tab: 'logs',
         onTab: _selectTab,
-        child: LogsScreen(
-          logs: _logs!,
-          mediaUrl: _api.mediaUrl,
-          onOpen: _openLog,
-          onSearch: () => setState(() => _sheet = 'logs-search'),
-          onAdd: () => setState(() => _sheet = 'logs-add'),
+        child: Builder(
+          builder: (BuildContext context) => LogsScreen(
+            logs: _visibleLogs,
+            mediaUrl: _api.mediaUrl,
+            onOpen: _openLog,
+            onSearch: () => openLogSearchSheet(
+              context,
+              initial: _logFilter,
+              onSearch: (String q) => setState(() => _logFilter = q),
+            ),
+            onAdd: () => _sheetLogAdd(context),
+          ),
         ),
       );
 
   Widget _allScreen() => Screen(
         tab: 'all',
         onTab: _selectTab,
-        child: AllScreen(
-          cuts: _cuts,
-          mediaUrl: _api.mediaUrl,
-          onOpen: (Cut c) => setState(() {
-            _cut = c;
-            _sheet = 'cut';
-          }),
-          onSearch: () => setState(() => _sheet = 'all-search'),
+        child: Builder(
+          builder: (BuildContext context) => AllScreen(
+            cuts: _visibleCuts,
+            mediaUrl: _api.mediaUrl,
+            onOpen: (Cut c) => _sheetCut(context, c),
+            onSearch: () => openSearchSheet(
+              context,
+              initial: _cutFilter,
+              onSearch: (String q) => setState(() => _cutFilter = q),
+            ),
+          ),
         ),
       );
+
+  /// 絞り込みの結果。空なら全部。
+  List<LogItem> get _visibleLogs => _logFilter.isEmpty
+      ? _logs!
+      : _logs!.where((LogItem l) => l.name.contains(_logFilter)).toList();
+
+  List<Cut> get _visibleCuts => _cutFilter.isEmpty
+      ? _cuts
+      : _cuts.where((Cut c) => (c.note ?? '').contains(_cutFilter)).toList();
 }
 
 /// まだ作っていない画面の代わり。

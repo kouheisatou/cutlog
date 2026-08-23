@@ -1,9 +1,10 @@
 // 画面の骨。web の .app / .topbar / .screen-body / .tabbar をそのまま写す。
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 
 import '../design/icons.dart';
 import '../design/text.dart';
 import '../design/tokens.dart';
+import 'controls.dart';
 
 /// CSS: .icon-btn — 44px の四角。見た目は薄く（opacity .7）、押せる範囲は広く取る。
 class IconBtn extends StatelessWidget {
@@ -151,7 +152,11 @@ class TabBarNav extends StatelessWidget {
   }
 }
 
-/// 画面ぜんぶ（中身＋下の帯）。帯は上に重ねる（CSS の position: fixed と同じ）。
+/// 画面ぜんぶ（中身＋下の帯）。
+/// ★ 器は Scaffold に任せる。知らせの帯（SnackBar）・切り欠きの逃げ・
+///   下の帯の置き場所を、標準の仕組みが面倒を見てくれる。
+/// ★ extendBody で、中身は帯の下まで敷く。CSS の position: fixed と同じ重なり方になる
+///   （各画面はすでに下へ 64px の余白を持っている）。
 class Screen extends StatelessWidget {
   const Screen({super.key, required this.child, this.tab, this.onTab});
 
@@ -162,6 +167,10 @@ class Screen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Palette c = colorsOf(context);
+    // ★ Scaffold は使わない。web に出したとき、中身（body）が描かれず
+    //   下の帯だけが画面の真ん中に残る形になった（端末では出ない）。
+    //   知らせの帯（SnackBar）は MaterialApp が用意する ScaffoldMessenger から出せるので、
+    //   Scaffold そのものは要らない。帯は CSS と同じく上に重ねる。
     return ColoredBox(
       color: c.paper,
       child: Stack(
@@ -219,4 +228,71 @@ class Crumbs extends StatelessWidget {
 
     return Expanded(child: Row(mainAxisSize: MainAxisSize.min, children: out));
   }
+}
+
+// ── 知らせと確かめ ──────────────────────────────────────
+// ★ 自前で重ねずに、標準の仕組みに載せる。画面の外を押した・戻ったときの
+//   後始末まで面倒を見てくれるので、閉じられない札のような不具合が出ない。
+
+/// CSS: .toast — 反転した細い帯を下から出す。
+void toast(BuildContext context, String message) {
+  final Palette c = colorsOf(context);
+  final Space sp = spaceOf(context);
+  ScaffoldMessenger.of(context)
+    ..clearSnackBars()
+    ..showSnackBar(SnackBar(
+      content: Text(
+        upper(message),
+        style: TextStyle(
+          color: c.selInk,
+          fontFamily: monoFamily,
+          fontFamilyFallback: monoFallback,
+          fontSize: 12,
+          height: lineHeight,
+          leadingDistribution: TextLeadingDistribution.even,
+          letterSpacing: 0.96,
+        ),
+      ),
+      backgroundColor: c.sel,
+      behavior: SnackBarBehavior.floating,
+      shape: const RoundedRectangleBorder(),
+      margin: EdgeInsets.fromLTRB(sp.s4, 0, sp.s4, 64 + MediaQuery.paddingOf(context).bottom),
+      duration: const Duration(seconds: 3),
+    ));
+}
+
+/// 取り返しのつかないことをする前に、一度だけ確かめる。
+Future<bool> confirm(BuildContext context, String question, String yes) async {
+  final Palette c = colorsOf(context);
+  final Typo t = Typo(c);
+  final Space sp = spaceOf(context);
+
+  final bool? ok = await showDialog<bool>(
+    context: context,
+    barrierColor: const Color(0x80101012),
+    builder: (BuildContext context) => Dialog(
+      backgroundColor: c.paper,
+      shape: const RoundedRectangleBorder(),
+      child: Padding(
+        padding: EdgeInsets.all(sp.s4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(question, style: t.body),
+            SizedBox(height: sp.s5),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: <Widget>[
+                TextBtn('やめる', onTap: () => Navigator.of(context).pop(false)),
+                SizedBox(width: sp.s4),
+                PrimaryBtn(yes, onTap: () => Navigator.of(context).pop(true)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+  return ok ?? false;
 }
