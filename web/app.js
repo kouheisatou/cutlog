@@ -846,6 +846,65 @@ function drawMap() {
   }
 }
 
+
+// ── コメント ────────────────────────────────────────────
+// その日の並びから、クリップごとに開いて読み書きする。
+async function openComments(cut) {
+  state.commentCut = cut;
+  $('#commentTitle').textContent = `${fmtTime(cut.takenAt, cut.tzOffset)} のコメント`;
+  $('#commentBox').value = '';
+  $('#commentList').innerHTML = '<span class="muted small">読み込んでいます…</span>';
+  if (!$('#commentDialog').open) $('#commentDialog').showModal();
+  await paintComments();
+}
+
+async function paintComments() {
+  const cut = state.commentCut;
+  if (!cut) return;
+  const { comments } = await api(`/cuts/${cut.id}`);
+  const box = $('#commentList');
+  box.innerHTML = comments.length ? '' : '<span class="muted small">まだコメントはありません。</span>';
+  for (const c of comments) {
+    const row = document.createElement('div');
+    row.className = 'comment';
+    row.innerHTML = `${avatarHtml(c.avatarUrl, c.author)}
+      <div class="c-body"><strong>${escapeHtml(c.author)}</strong><span>${escapeHtml(c.body)}</span></div>`;
+    if (c.userId === state.user?.id) {
+      const del = document.createElement('button');
+      del.className = 'mini';
+      del.textContent = '消す';
+      del.addEventListener('click', async () => {
+        await api(`/comments/${c.id}`, { method: 'DELETE' });
+        await paintComments();
+      });
+      row.appendChild(del);
+    }
+    box.appendChild(row);
+  }
+  // 数が変わっていれば、並びのしるしにも反映する
+  const target = state.dayCuts.find((x) => x.id === cut.id);
+  if (target) target.commentCount = comments.length;
+  renderDayList();
+}
+
+// ── アカウントの顔 ──────────────────────────────────────
+// 絵を置いていない人は、名前の頭文字で出す。
+function avatarHtml(url, name, cls = '') {
+  const initial = escapeHtml(String(name || '?').trim().slice(0, 1).toUpperCase());
+  return url
+    ? `<span class="avatar ${cls}"><img src="${url}" alt="" /></span>`
+    : `<span class="avatar ${cls}">${initial}</span>`;
+}
+
+function paintMyAvatar() {
+  const u = state.user;
+  if (!u) return;
+  $('#myAvatar').innerHTML = u.avatarUrl
+    ? `<img src="${u.avatarUrl}?t=${Date.now()}" alt="" />`
+    : escapeHtml(String(u.displayName || u.username || '?').trim().slice(0, 1).toUpperCase());
+  $('#avatarClear').hidden = !u.avatarUrl;
+}
+
 // ── このログの設定 ──────────────────────────────────────
 // ログに関わることは、全体の設定ではなくここに集める。
 // 名前・1クリップの長さ・行き先の既定・招待コード・いる人・共有リンク・ゴミ箱。
@@ -2580,6 +2639,17 @@ $('#fileInput').addEventListener('change', async (e) => {
   pending = { blob: file, kind: 'video', durationMs: null, mime: file.type, source: 'upload' };
   showReview(URL.createObjectURL(file));
 });
+// ★取りこぼした失敗を、黙って飲みこまない。
+// 押しても何も起きない、という壊れ方がいちばん分かりにくいので、画面に出す。
+window.addEventListener('unhandledrejection', (ev) => {
+  const msg = ev.reason?.message || String(ev.reason || '');
+  console.error('[unhandled]', ev.reason);
+  toast(`うまくいきませんでした: ${msg}`, 5000);
+});
+window.addEventListener('error', (ev) => {
+  console.error('[error]', ev.error || ev.message);
+});
+
 wireModals();
 
 // ── 画面の拡大縮小を止める ──────────────────────────────
