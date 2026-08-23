@@ -1475,21 +1475,6 @@ function askPlace() {
   );
 }
 
-// いま実際に撮れている大きさと滑らかさを、小さく出す。
-// 手ぶれ補正が付く形式かどうかを見分ける手がかりになる。
-function paintCamSpec() {
-  const t = stream?.getVideoTracks?.()[0];
-  const st = t?.getSettings?.() || {};
-  const el = $('#capSpec');
-  if (!st.width || !st.height) { el.textContent = ''; return; }
-  const bits = [`${st.width}×${st.height}`];
-  if (st.frameRate) bits.push(`${Math.round(st.frameRate)}fps`);
-  // 端末が手ぶれ補正の状態を教えてくれるなら、それも出す
-  const mode = st.videoStabilizationMode;
-  if (mode && mode !== 'none' && mode !== 'off') bits.push('手ぶれ補正');
-  el.textContent = bits.join(' ');
-}
-
 function paintCamHint() {
   const portrait = window.matchMedia?.('(orientation: portrait)').matches;
   $('#camHint').hidden = !portrait;
@@ -1513,7 +1498,6 @@ async function openCapture() {
   paintCamHint();
   lockLandscape();
   askPlace();
-  $('#capTimer').textContent = `${state.log?.cut_seconds || 2}秒`;
   state.captureLogId = state.logId;
   updateCapDest();
   await startStream();
@@ -1636,7 +1620,6 @@ async function startStream() {
       }
     }
     renderCameraPicker();
-    paintCamSpec();
     $('#preview').srcObject = stream;
     $('#preview').hidden = false;
     $('#playback').hidden = true;
@@ -1798,22 +1781,15 @@ async function shoot() {
   };
   recorder.start();
   const btn = $('#shootBtn');
-  btn.style.setProperty('--cut-seconds', `${seconds}s`);
+  btn.style.setProperty('--cut-seconds', `${seconds}s`);   // 輪が一周する時間
   btn.classList.remove('recording');
   void btn.offsetWidth;          // いったん外して、輪を頭から回し直す
   btn.classList.add('recording');
-  let left = seconds;
-  $('#capTimer').textContent = `${left}`;
-  const iv = setInterval(() => {
-    left -= 1;
-    $('#capTimer').textContent = `${Math.max(0, left)}`;
-    if (left <= 0) {
-      clearInterval(iv);
-      btn.classList.remove('recording');
-      if (recorder.state !== 'inactive') recorder.stop();
-      $('#capTimer').textContent = `${seconds}秒`;
-    }
-  }, 1000);
+  // 終わりはシャッターの輪が知らせるので、数字では出さない
+  setTimeout(() => {
+    btn.classList.remove('recording');
+    if (recorder.state !== 'inactive') recorder.stop();
+  }, seconds * 1000);
 }
 
 // 撮ったあとの確認。撮るための操作（シャッター・レンズ・ズーム・案内）は引っこめ、

@@ -439,7 +439,6 @@ dialog.sheet::backdrop { background: rgba(16,16,18,.5); }
 .chip.active { opacity: 1; text-decoration: underline; text-underline-offset: 5px; }
 .chip.file { display: grid; place-items: center; min-width: 44px; min-height: 44px; cursor: pointer; }
 .chip.ghost { opacity: .55; }
-#capTimer { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; }
 
 .shutter {
   position: relative; width: 78px; height: 78px; border-radius: 50%;
@@ -1029,11 +1028,6 @@ dialog.sheet.cam .panel { border-radius: 0; }
   dialog.sheet { align-items: center; }
 }
 
-/* いま撮れている大きさ（手ぶれ補正の付く形式か見分ける手がかり） */
-.cap-spec {
-  color: #fff; opacity: .7; font-family: var(--mono); font-size: 9px;
-  letter-spacing: .06em; white-space: nowrap; flex: none;
-}
 
 /* ── まとめて選ぶ（長押しから） ─────────────────────── */
 .photo-cell .tick {
@@ -1065,7 +1059,5 @@ dialog.sheet.cam .panel { border-radius: 0; }
 /* 撮ったあとの確認中は、撮るための操作を引っこめる */
 .capture.reviewing .capture-controls,
 .capture.reviewing .cam-hint,
-.capture.reviewing #capTimer,
-.capture.reviewing #flipCam,
-.capture.reviewing .cap-spec { display: none; }
+.capture.reviewing #flipCam { display: none; }
 .capture.reviewing #playback { width: 100%; height: 100%; object-fit: contain; background: #000; }

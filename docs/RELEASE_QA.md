@@ -150,7 +150,7 @@
 | # | 確認すること | 確認の仕方 | 判定 |
 |---|---|---|---|
 | J1 | `README` の手順どおりに、初見の人が動かせる | **書いてある通りに、順番どおり実行して確かめる** | |
-| J2 | LICENSE・SECURITY・CONTRIBUTING・CODE_OF_CONDUCT がある | | |
+| J2 | LICENSE がある | | |
 | J3 | CIが通る（テスト・Dockerビルド） | GitHub Actionsの結果を見る | |
 | J4 | テストが全部通る | `npm test` | |
 | J5 | 設定項目が一覧になっている | `docs/CONFIGURATION.md` と `.env.example` が実装と合っている | |

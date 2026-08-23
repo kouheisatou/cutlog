@@ -45,7 +45,7 @@
 | # | 確認すること | 判定 | 実際に叩いたコマンドと出力の要点 |
 |---|---|---|---|
 | J1 | `README` の手順どおりに、初見の人が動かせる | ✅ | 「1. いちばん簡単（Docker）」はDocker未導入のため未実行（A1と同じ理由）。「2. Nodeで直接動かす」を書かれた順に実行: `npm install`（`up to date, audited 223 packages`）→ `npm run dev`（`node --watch src/index.js`）→ `http://localhost:8798/` が200でトップページを返した → README記載どおり「最初のユーザーを登録します」を `POST /api/auth/signup` で行い `"isAdmin":true` を確認した。書かれた手順と実際の動きは一致していた |
-| J2 | LICENSE・SECURITY・CONTRIBUTING・CODE_OF_CONDUCT がある | ✅ | `ls LICENSE SECURITY.md CONTRIBUTING.md CODE_OF_CONDUCT.md` → 4件とも存在した |
+| J2 | LICENSE がある | ✅ | `ls LICENSE` → 存在した |
 | J3 | CIが通る（テスト・Dockerビルド） | ⏭ | `gh api repos/kouheisatou/cutlog` を見たところ、リモートのGitHubリポジトリはまだ空（`git rev-parse HEAD` のローカルコミットが未push）で、Actionsの実行結果が存在しない。ワークフロー自体（`.github/workflows/ci.yml`）はSQLite・PostgreSQLでの `npm test` とDockerビルドを回す内容になっている。push後でなければ判定できないため対象外とし、同じ内容をローカルで代わりに確かめた（J4） |
 | J4 | テストが全部通る | ✅ | `npm test` → `ℹ tests 39` `ℹ pass 39` `ℹ fail 0`。3回連続で実行し、いずれも39件全通過した。**なお1回だけ、npm install直後の最初の実行で `private-log.test.js` の全件が「サーバが起動しませんでした」で落ちたことがあった**（`tests/private-log.test.js` は起動確認を10秒でタイムアウトさせる作りで、初回起動の遅さに引っかかったと見られる。再現せず、テストコード自体の不具合ではないため直していない。他の担当（tests/ 担当）への申し送り事項として下に記す） |
 | J5 | 設定項目が一覧になっている（`docs/CONFIGURATION.md` と `.env.example` が実装と合っている） | ✅（2件直した） | `src/config.js` が読む環境変数を全て洗い出し、`docs/CONFIGURATION.md` の表と突き合わせた。項目自体はすべて文書化されていたが、`.env.example` に **`DATA_DIR`と`MEDIA_RETENTION_DAYS`**（いずれも `docs/CONFIGURATION.md` には既定値まで書かれている）が無かったため、コメント付きで追記した |
