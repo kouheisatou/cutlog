@@ -362,6 +362,59 @@ class _HostState extends State<_Host> {
     );
   }
 
+  /// まとめて消す。
+  /// ★ 1件ずつ送り、失敗した分だけを知らせて残りは続ける。
+  ///   途中で止めると「どこまで消えたか」が分からなくなる。
+  Future<void> _deleteMany(BuildContext context, List<Cut> picked) async {
+    final bool yes = await confirm(
+      context,
+      '${picked.length}件のカットを削除しますか。ゴミ箱から戻せます。',
+      '削除',
+    );
+    if (!yes) return;
+
+    int done = 0;
+    for (final Cut c in picked) {
+      final String? bad = await _api.deleteCut(c.id);
+      if (bad == null) {
+        done++;
+      } else if (context.mounted) {
+        toast(context, bad);
+      }
+    }
+    await _reload();
+    if (context.mounted) toast(context, '$done件を削除しました');
+  }
+
+  /// まとめて移す
+  Future<void> _moveMany(BuildContext context, List<Cut> picked) async {
+    await openMoveSheet(
+      context,
+      logs: _logs!,
+      fromLogId: picked.first.logId,
+      onMove: (String logId) async {
+        int done = 0;
+        String? last;
+        for (final Cut c in picked) {
+          final String? bad = await _api.moveCut(c.id, logId);
+          if (bad == null) {
+            done++;
+          } else {
+            last = bad;
+          }
+        }
+        await _reload();
+        if (done == 0) return last ?? '移せませんでした';
+        if (context.mounted) {
+          toast(context, done == picked.length
+              ? '$done件を移しました'
+              : '$done件を移しました。${picked.length - done}件は移せませんでした。');
+        }
+        return null;
+      },
+    );
+  }
+
   /// 中身を取り直す（作った・消した・移した あとに呼ぶ）
   Future<void> _reload() async {
     final List<Object?> got = await Future.wait(<Future<Object?>>[
@@ -581,12 +634,15 @@ class _HostState extends State<_Host> {
           builder: (BuildContext context) => AllScreen(
             cuts: _visibleCuts,
             media: _media,
+            filter: _cutFilter,
             onOpen: (Cut c) => _sheetCut(context, c),
             onSearch: () => openSearchSheet(
               context,
               initial: _cutFilter,
               onSearch: (String q) => setState(() => _cutFilter = q),
             ),
+            onDelete: (List<Cut> picked) => _deleteMany(context, picked),
+            onMove: (List<Cut> picked) => _moveMany(context, picked),
           ),
         ),
       );

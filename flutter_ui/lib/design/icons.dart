@@ -52,6 +52,8 @@ const Map<String, _Glyph> _glyphs = <String, _Glyph>{
   'camera': _Glyph(<String>['M8 6l1.4-2h5.2L16 6'],
       circles: <List<double>>[<double>[12, 12.5, 3.6]],
       rects: <List<double>>[<double>[3, 6, 18, 13, 1]], round: false),
+  // 選んだ印。web は CSS の傾けた線で描いている。同じ形を線で引く。
+  'check': _Glyph(<String>['M5 12.5l5 5 9-10']),
   'list': _Glyph(<String>['M4 6h16M4 12h16M4 18h16']),
   'grid': _Glyph(<String>[], rects: <List<double>>[
     <double>[3, 3, 7.5, 7.5], <double>[13.5, 3, 7.5, 7.5],

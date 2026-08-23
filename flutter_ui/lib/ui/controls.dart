@@ -136,8 +136,11 @@ class MiniBtn extends StatelessWidget {
               padding: EdgeInsets.symmetric(horizontal: sp.s2, vertical: 6),
               child: row,
             )
+          // ★ 見た目は小さくても、押せる範囲は 44px を確保する。
+          //   web は擬似要素で同じことをしている（.mini::before）。
+          //   24px のままだと指では当てられず、押しても何も起きないように見える。
           : ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 24, minWidth: 24),
+              constraints: const BoxConstraints(minHeight: 44, minWidth: 44),
               child: Align(alignment: Alignment.center, widthFactor: 1, child: row),
             ),
       ),
