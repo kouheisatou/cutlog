@@ -73,6 +73,9 @@ class Typo {
   TextStyle get mini => _base(fontSize: 10, color: c.mute, letterSpacing: 10 * track, mono: true,
       decoration: TextDecoration.underline, decorationColor: c.mute);
 
+  /// .eyebrow — 9px .22em mute 大文字
+  TextStyle get eyebrow => _base(fontSize: 9, color: c.mute, letterSpacing: 1.98, mono: true);
+
   /// .muted.small
   TextStyle get small => _base(fontSize: 12, color: c.mute, letterSpacing: 0.144);
 

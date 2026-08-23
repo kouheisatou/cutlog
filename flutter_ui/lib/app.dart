@@ -201,6 +201,12 @@ class _HostState extends State<_Host> {
         return LogAddSheet(under: _logsScreen());
       case 'logs-search':
         return LogSearchSheet(under: _logsScreen());
+      case 'cut':
+        {
+          // 見比べでは、いちばん新しいカットを開く（カット一覧の左上を押した先）
+          if (_cuts.isEmpty) return _Note('カットがありません');
+          return CutSheet(under: _allScreen(), cut: _cuts.first, mediaUrl: _api.mediaUrl);
+        }
       case 'all-search':
         return SearchSheet(under: _allScreen());
       case 'all':
