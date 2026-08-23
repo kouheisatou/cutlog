@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  カセットテープ。白地に黒い線だけで描く。
-  アダプティブアイコンは 108dp のうち外周が切り落とされ、
-  中央 72dp ぶんだけが確実に見える。そのため絵は中央に寄せている。
-  ★リールは「窓の中」に納める。丸を2つ並べただけだと顔に見えてしまう。
+  時間の軸を抽象にしたしるし。白地に細い黒の線だけ。
+  ・横一本が時間の流れ、縦の線が区切り。|—|—|— の形そのもの
+  ・アダプティブアイコンは外周が切り落とされるので、絵は中央 72dp に収める
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -11,63 +10,17 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- 本体 -->
+    <!-- 時間の軸 -->
     <path
-        android:pathData="M25,38 h58 a4,4 0 0 1 4,4 v28 a4,4 0 0 1 -4,4 h-58 a4,4 0 0 1 -4,-4 v-28 a4,4 0 0 1 4,-4 z"
+        android:pathData="M25,54 h58"
         android:strokeColor="#101012"
-        android:strokeWidth="2.4"
-        android:strokeLineJoin="round" />
-
-    <!-- 上のラベル（貼り紙の罫線） -->
-    <path
-        android:pathData="M28,44 h52 M28,49 h36"
-        android:strokeColor="#101012"
-        android:strokeWidth="2.2"
+        android:strokeWidth="1.9"
         android:strokeLineCap="round" />
 
-    <!-- 窓。この中にリールが入る -->
+    <!-- 区切りの刻み -->
     <path
-        android:pathData="M28,53 h52 a2,2 0 0 1 2,2 v11 a2,2 0 0 1 -2,2 h-52 a2,2 0 0 1 -2,-2 v-11 a2,2 0 0 1 2,-2 z"
+        android:pathData="M25,46.5 v15 M44.3,46.5 v15 M63.7,46.5 v15 M83,46.5 v15"
         android:strokeColor="#101012"
-        android:strokeWidth="2.2"
-        android:strokeLineJoin="round" />
-
-    <!-- 左のリールと軸 -->
-    <path
-        android:pathData="M41,60.5 m-5.2,0 a5.2,5.2 0 1,0 10.4,0 a5.2,5.2 0 1,0 -10.4,0"
-        android:strokeColor="#101012"
-        android:strokeWidth="2.2" />
-    <path
-        android:pathData="M41,60.5 m-1.5,0 a1.5,1.5 0 1,0 3,0 a1.5,1.5 0 1,0 -3,0"
-        android:strokeColor="#101012"
-        android:strokeWidth="2" />
-
-    <!-- 右のリールと軸 -->
-    <path
-        android:pathData="M67,60.5 m-5.2,0 a5.2,5.2 0 1,0 10.4,0 a5.2,5.2 0 1,0 -10.4,0"
-        android:strokeColor="#101012"
-        android:strokeWidth="2.2" />
-    <path
-        android:pathData="M67,60.5 m-1.5,0 a1.5,1.5 0 1,0 3,0 a1.5,1.5 0 1,0 -3,0"
-        android:strokeColor="#101012"
-        android:strokeWidth="2" />
-
-    <!-- リールのあいだに張られたテープ -->
-    <path
-        android:pathData="M46.2,59 h15.6 M46.2,62 h15.6"
-        android:strokeColor="#101012"
-        android:strokeWidth="1.8"
+        android:strokeWidth="1.9"
         android:strokeLineCap="round" />
-
-    <!-- 下の送り穴。ここがあると、顔ではなく機械だと分かる -->
-    <path
-        android:pathData="M38,71.5 h8 a1.5,1.5 0 0 1 1.5,1.5 a1.5,1.5 0 0 1 -1.5,1.5 h-8 a1.5,1.5 0 0 1 -1.5,-1.5 a1.5,1.5 0 0 1 1.5,-1.5 z"
-        android:strokeColor="#101012"
-        android:strokeWidth="2"
-        android:strokeLineJoin="round" />
-    <path
-        android:pathData="M62,71.5 h8 a1.5,1.5 0 0 1 1.5,1.5 a1.5,1.5 0 0 1 -1.5,1.5 h-8 a1.5,1.5 0 0 1 -1.5,-1.5 a1.5,1.5 0 0 1 1.5,-1.5 z"
-        android:strokeColor="#101012"
-        android:strokeWidth="2"
-        android:strokeLineJoin="round" />
 </vector>
