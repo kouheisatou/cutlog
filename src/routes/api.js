@@ -19,6 +19,7 @@ import {
 import { enqueue, getJob } from '../jobs/queue.js';
 import { ensurePrivateLog, isPrivate } from '../lib/private-log.js';
 import { normalizeStyle, DEFAULT_STYLE } from '../lib/render-style.js';
+import { fcmReady, sendToToken } from '../lib/fcm.js';
 
 export const api = express.Router();
 
@@ -106,6 +107,8 @@ api.get('/config', (req, res) => {
     openSignup: config.auth.openSignup,
     oidc: oidcEnabled ? { enabled: true, label: config.auth.oidc.buttonLabel } : { enabled: false },
     vapidPublicKey: config.push.publicKey || null,
+    // アプリ（iOS / Android）へ通知を出せる設えになっているか
+    fcmEnabled: fcmReady(),
     cutSecondsDefault: config.media.cutSecondsDefault,
     mapTileUrl: config.map.tileUrl,
     mapCredit: config.map.credit,
@@ -1113,6 +1116,24 @@ if (config.push.publicKey && config.push.privateKey) {
   webpush.setVapidDetails(config.push.subject, config.push.publicKey, config.push.privateKey);
 }
 
+// iOS / Android のアプリは、Firebase がくれた札を預ける。
+// ★ ブラウザの購読と同じ表に、種類を添えて置く。送るときにそこで分ける。
+api.post('/push/fcm', requireAuth, asyncRoute(async (req, res) => {
+  const token = String(req.body?.token || '').trim();
+  if (!token) return res.status(400).json({ error: '札がありません' });
+  const existing = await db.get('SELECT * FROM push_subs WHERE endpoint = ?', [token]);
+  if (existing) {
+    await db.run('UPDATE push_subs SET user_id = ?, kind = ? WHERE endpoint = ?',
+      [req.user.id, 'fcm', token]);
+  } else {
+    await db.run(
+      'INSERT INTO push_subs (id, user_id, endpoint, p256dh, auth, kind, created_at) VALUES (?,?,?,?,?,?,?)',
+      [id('ps_'), req.user.id, token, '', '', 'fcm', nowIso()],
+    );
+  }
+  return res.json({ ok: true });
+}));
+
 api.post('/push/subscribe', requireAuth, asyncRoute(async (req, res) => {
   const sub = req.body?.subscription;
   if (!sub?.endpoint) return res.status(400).json({ error: '購読の情報がありません' });
@@ -1128,10 +1149,26 @@ api.post('/push/subscribe', requireAuth, asyncRoute(async (req, res) => {
 }));
 
 export async function pushToUser(userId, payload) {
-  if (!config.push.publicKey || !config.push.privateKey) return 0;
+  const canWeb = !!(config.push.publicKey && config.push.privateKey);
+  const canApp = fcmReady();
+  if (!canWeb && !canApp) return 0;
+
   const subs = await db.all('SELECT * FROM push_subs WHERE user_id = ?', [userId]);
   let sent = 0;
   for (const s of subs) {
+    // アプリ（Firebase）ぶん
+    if (s.kind === 'fcm') {
+      if (!canApp) continue;
+      // eslint-disable-next-line no-await-in-loop
+      const how = await sendToToken(s.endpoint, payload);
+      if (how === 'ok') sent += 1;
+      // eslint-disable-next-line no-await-in-loop
+      if (how === 'gone') await db.run('DELETE FROM push_subs WHERE id = ?', [s.id]);
+      continue;
+    }
+
+    // ブラウザ（Web Push）ぶん
+    if (!canWeb) continue;
     try {
       // eslint-disable-next-line no-await-in-loop
       await webpush.sendNotification(

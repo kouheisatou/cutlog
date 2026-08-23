@@ -93,9 +93,15 @@ export const config = {
   },
 
   push: {
+    // ブラウザへ届けるぶん（Web Push）
     publicKey: process.env.VAPID_PUBLIC_KEY || '',
     privateKey: process.env.VAPID_PRIVATE_KEY || '',
     subject: process.env.VAPID_SUBJECT || 'mailto:admin@example.com',
+    // iOS / Android のアプリへ届けるぶん（Firebase）。
+    // ★ どちらか一方でよい。ファイルの道を置くか、中身をそのまま置くか。
+    //   置かなければ、通知はブラウザぶんだけになる。
+    fcmServiceAccountFile: process.env.FCM_SERVICE_ACCOUNT_FILE || '',
+    fcmServiceAccountJson: process.env.FCM_SERVICE_ACCOUNT_JSON || '',
   },
 
   limits: {

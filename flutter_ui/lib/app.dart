@@ -1,10 +1,14 @@
 // アプリの入口と、画面の行き来。
 // ★ 見比べのために `?shot=<名前>` で1枚だけ出せる口も残してある。
 //   本物の web を同じ名前で撮って重ねるので、行き着く道が違うと比べられない。
+import 'dart:async' show unawaited;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'data/api.dart';
 import 'data/models.dart';
+import 'data/push.dart';
 import 'design/text.dart';
 import 'design/tokens.dart';
 import 'screens/all_screen.dart';
@@ -77,6 +81,7 @@ class _Host extends StatefulWidget {
 
 class _HostState extends State<_Host> {
   final Api _api = Api();
+  late final Push _push = Push(_api);
 
   List<LogItem>? _logs;
   List<Cut> _cuts = <Cut>[];              // ログをまたいだ全部
@@ -123,6 +128,10 @@ class _HostState extends State<_Host> {
         _config = got[2]! as Map<String, dynamic>;
         _cuts = got[3]! as List<Cut>;
       });
+      // 通知の受け取り口。サーバが出せる設えのときだけ用意する。
+      // ★ ここで失敗しても、他の機能は止めない。
+      if (_config['fcmEnabled'] == true && !kIsWeb) unawaited(_push.start());
+
       // 見比べのときは、決まったログを開いた状態にしておく
       if (_shot != null) {
         await _openLog(_target, quiet: true);
