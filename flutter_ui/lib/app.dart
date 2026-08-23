@@ -387,9 +387,22 @@ class _HostState extends State<_Host> {
 
   @override
   Widget build(BuildContext context) {
-    if (_error != null) return _Note('つながりません: $_error');
+    // ★ 白いまま止めない。つないでいる最中か、つまずいたのかを必ず出す。
+    if (_error != null) {
+      return _Trouble(
+        message: _error!,
+        where: _api.where,
+        onRetry: () {
+          setState(() {
+            _error = null;
+            _logs = null;
+          });
+          _load();
+        },
+      );
+    }
     if (_needAuth && _shot == null) return AuthScreen(onSubmit: _signIn);
-    if (_logs == null) return const SizedBox.shrink();
+    if (_logs == null) return const _Waiting();
 
     return _pageFor(_shot ?? _current);
   }
@@ -582,19 +595,56 @@ class _HostState extends State<_Host> {
       : _cuts.where((Cut c) => (c.note ?? '').contains(_cutFilter)).toList();
 }
 
-/// まだ作っていない画面の代わり。
-class _Note extends StatelessWidget {
-  const _Note(this.text);
-
-  final String text;
+/// つないでいる最中。
+class _Waiting extends StatelessWidget {
+  const _Waiting();
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text(text, textAlign: TextAlign.center, style: Typo.of(context).empty),
+    final Palette c = colorsOf(context);
+    return ColoredBox(
+      color: c.paper,
+      child: Center(child: Text(upper('つないでいます'), style: Typo(c).sectionHead)),
+    );
+  }
+}
+
+/// つまずいたとき。何が起きたか・どこへつなごうとしたか・もう一度、を出す。
+/// ★ 訳を隠さない。手元のサーバへつなぐ使い方が多いので、
+///   「どこへつなごうとしたか」が分かるだけで直せることが多い。
+class _Trouble extends StatelessWidget {
+  const _Trouble({required this.message, required this.where, required this.onRetry});
+
+  final String message;
+  final String where;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final Palette c = colorsOf(context);
+    final Typo t = Typo(c);
+    final Space sp = spaceOf(context);
+
+    return ColoredBox(
+      color: c.paper,
+      child: Center(
+        child: Padding(
+          padding: EdgeInsets.all(sp.s4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(upper('つながりません'), style: t.sectionHead),
+              SizedBox(height: sp.s3),
+              Text(message, textAlign: TextAlign.center, style: t.body.copyWith(fontSize: 13)),
+              SizedBox(height: sp.s2),
+              Text('つなぎ先 $where', textAlign: TextAlign.center, style: t.small),
+              SizedBox(height: sp.s5),
+              PrimaryBtn('もう一度', onTap: onRetry),
+            ],
+          ),
+        ),
       ),
     );
   }
 }
+
