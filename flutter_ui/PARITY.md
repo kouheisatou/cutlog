@@ -1,0 +1,51 @@
+# cutlog を Flutter で作り直す — 見比べの手引き
+
+`web/` の画面を正として、Flutter で同じ絵を出す。合っているかは目で見ず、**同じ Chrome で撮った 2 枚を重ねて測る**。
+
+## 一周する
+
+```bash
+cd flutter_ui
+./tool/parity/run.sh          # 全画面
+./tool/parity/run.sh logs     # その画面だけ
+```
+
+- `shots/web/` … 本物（正）
+- `shots/flutter/` … Flutter
+- `shots/diff/` … 違うところを赤で塗った絵
+- `shots/probe/` … 本物の DOM の座標と最終スタイル（**数字はここを見る。目で測らない**）
+
+## 測り方
+
+| 名前 | 意味 |
+| --- | --- |
+| 置き場所 | 8×8 に潰してから比べる。位置・大きさ・色のずれだけが残る。**これが本命** |
+| 見える差 | 画素の差が 32 を超えたところ。字の縁のなめらかさは無視する |
+| 完全一致でない | 1 でも違う画素。参考値 |
+
+## 決めごと
+
+- 書体は web・Flutter とも同梱の **Noto Sans JP / Roboto Mono**。端末任せにすると字幅が変わる。
+- 余白は画面の幅で変わる（`Space.forWidth`）。390px 幅では `s3=18, s4=16, s5=28, s6=44, gutter=46`。
+- 行の高さは CSS の `line-height` をそのまま持つ。Flutter 側は `leadingDistribution: even` で CSS と同じ配り方にする。
+- 数字を手で決めない。`shots/probe/*.json` に本物の値がある。
+
+## いまの出来ぐあい
+
+| 画面 | 出来 | 置き場所の差 |
+| --- | --- | --- |
+| logs（ログ一覧） | できた | 0.59% |
+| auth（ログイン） | まだ | — |
+| log（カレンダー） | まだ | — |
+| logset（ログの設定） | まだ | — |
+| day（つないだ再生） | まだ | — |
+| all（カット一覧） | まだ | — |
+| map（マップ） | まだ | — |
+| settings（設定） | まだ | — |
+| capture（撮影） | 下書きあり（`tool/parity/capture_screen.dart.wip`） | — |
+| logs-add / logs-search / all-search / cut（シート） | まだ | — |
+
+## 残っている細かいずれ
+
+- 等幅の字が 0.67px ほど下にずれる（`.log-sub`, タブの名前）。書体の縦の取り方の違い。
+- アイコンの線が少し違う。`lib/design/icons.dart` の描き方を詰める。
