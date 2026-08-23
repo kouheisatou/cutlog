@@ -46,3 +46,6 @@ app.*.map.json
 
 # 見比べで撮った絵と、吸い出した座標（作り直せるので持たない）
 shots/
+
+# 見比べ用の黒い映像（大きいので持たない。run.sh が作り直す）
+tool/parity/fixtures/

@@ -37,9 +37,12 @@ export async function launchChrome({ port = 9333 } = {}) {
     '--hide-scrollbars',            // 影の幅ぶん絵がずれるのを防ぐ
     '--force-color-profile=srgb',   // 端末ごとの色の寄りを止める
     '--font-render-hinting=none',
-    // 撮影の画面を出すため、カメラは作り物の映像で代わりをさせる
+    // 撮影の画面を出すため、カメラは作り物の映像で代わりをさせる。
+    // ★ 既定の作り物は動く模様なので、撮るたびに絵が変わって見比べられない。
+    //   真っ黒の映像を流し込み、上に乗る操作だけを比べられるようにする。
     '--use-fake-ui-for-media-stream',
     '--use-fake-device-for-media-stream',
+    `--use-file-for-fake-video-capture=${new URL('./fixtures/black.y4m', import.meta.url).pathname}`,
     'about:blank',
   ], { stdio: 'ignore' });
 

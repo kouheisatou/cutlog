@@ -20,6 +20,12 @@ if ! curl -sf -o /dev/null http://localhost:8788/; then
 fi
 
 echo "── 中身を用意 ────────────────────────────────"
+# 撮影の画面で流し込む真っ黒の映像。既定の作り物は動く模様で、撮るたびに絵が変わる。
+if [ ! -f tool/parity/fixtures/black.y4m ]; then
+  mkdir -p tool/parity/fixtures
+  ffmpeg -hide_banner -loglevel error -y -f lavfi -i color=c=black:s=640x360:d=2 \
+    -pix_fmt yuv420p tool/parity/fixtures/black.y4m
+fi
 node tool/parity/seed.mjs
 
 echo "── 組み立て（Flutter → web）──────────────────"

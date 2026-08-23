@@ -10,6 +10,7 @@ import 'design/text.dart';
 import 'design/tokens.dart';
 import 'screens/all_screen.dart';
 import 'screens/auth_screen.dart';
+import 'screens/capture_screen.dart';
 import 'screens/day_screen.dart';
 import 'screens/log_screen.dart';
 import 'screens/logs_screen.dart';
@@ -185,6 +186,8 @@ class _HostState extends State<_Host> {
             child: DayScreen(date: _newestDay, cuts: day, mediaUrl: _api.mediaUrl),
           );
         }
+      case 'capture':
+        return CaptureScreen(destination: _target.name);
       case 'review':
         {
           // 撮ったばかりのものの代わりに、いちばん新しいカットを置いて形を確かめる

@@ -6,6 +6,7 @@
   だから「まったく同じ画素の率」と「目に見える差の率」を分けて出す。
 """
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -15,7 +16,7 @@ from PIL import Image, ImageChops
 TOLERANCE = 32
 
 
-def compare(a_path: Path, b_path: Path, out_path: Path):
+def compare(a_path: Path, b_path: Path, out_path: Path, ignore=()):
     a = Image.open(a_path).convert("RGB")
     b = Image.open(b_path).convert("RGB")
 
@@ -27,6 +28,17 @@ def compare(a_path: Path, b_path: Path, out_path: Path):
 
     diff = ImageChops.difference(a, b)
     gray = diff.convert("L")
+
+    # 測らないところ（作り物のカメラの絵など）は、まっさらに塗り潰してから数える
+    if ignore:
+        scale = a.size[0] / 390          # 端末の画素と CSS px の比
+        for box in ignore:
+            gray.paste(0, (int(box["x"] * scale), int(box["y"] * scale),
+                           int((box["x"] + box["w"]) * scale), int((box["y"] + box["h"]) * scale)))
+            a.paste((255, 255, 255), (int(box["x"] * scale), int(box["y"] * scale),
+                                      int((box["x"] + box["w"]) * scale), int((box["y"] + box["h"]) * scale)))
+            b.paste((255, 255, 255), (int(box["x"] * scale), int(box["y"] * scale),
+                                      int((box["x"] + box["w"]) * scale), int((box["y"] + box["h"]) * scale)))
     total = a.size[0] * a.size[1]
 
     strict = sum(1 for p in gray.getdata() if p > 0)
@@ -76,13 +88,20 @@ def main():
     ref_dir, got_dir = root / "web", root / "flutter"
     out_dir = root / "diff"
 
+    # 画面ごとの「測らないところ」を screens.mjs から読む
+    ignores = {}
+    src = (Path(__file__).parent / "screens.mjs").read_text()
+    for m in re.finditer(r"name: '([a-z0-9-]+)',[\s\S]{0,400}?ignore: (\[[^\]]*\])", src):
+        ignores[m.group(1)] = json.loads(m.group(2).replace("x:", '"x":').replace("y:", '"y":')
+                                         .replace("w:", '"w":').replace("h:", '"h":'))
+
     report = {}
     for ref in sorted(ref_dir.glob("*.png")):
         got = got_dir / ref.name
         if not got.exists():
             report[ref.stem] = {"missing": True}
             continue
-        report[ref.stem] = compare(ref, got, out_dir / ref.name)
+        report[ref.stem] = compare(ref, got, out_dir / ref.name, ignores.get(ref.stem, ()))
 
     (root / "diff.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
 
