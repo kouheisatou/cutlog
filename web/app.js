@@ -166,7 +166,13 @@ function renderTabbar() {
 }
 
 async function selectTab(tab) {
-  if (tab === 'camera') { openCapture(); return; }
+  if (tab === 'camera') {
+    // ネイティブの殻の中なら、端末のカメラで撮る（手ぶれ補正などが効く）
+    state.captureLogId = state.logId;
+    if (captureViaNative()) return;
+    openCapture();
+    return;
+  }
   if (tab === 'all') { await openAllCuts(); return; }
   if (tab === 'map') { await openMap(); return; }
   if (tab === 'settings') { openSettings(); return; }
@@ -1492,6 +1498,65 @@ function scrubToEvent(ev) {
   return (Math.max(0, Math.min(r.width, x)) / r.width) * play.total;
 }
 
+
+// ── ネイティブの殻との受け渡し ──────────────────────────
+// iOS / Android のアプリの中で開かれているときは、撮影だけをネイティブに任せる。
+// ブラウザの getUserMedia では、端末の手ぶれ補正や画づくりが通らないためである。
+// 殻が居ないとき（ふつうのブラウザ）は、これまでどおり画面の中のカメラを使う。
+//
+// 受け渡しの約束:
+//   web → native : cutlogNative.capture({ baseUrl, logId, seconds })
+//   native → web : window.cutlogNative.onResult({ ok, error })
+//                  （ネイティブ側が録って、そのままサーバへ上げる。
+//                    大きなファイルを橋渡ししないで済む）
+const nativeShell = {
+  get bridge() {
+    // iOS は WKWebView の messageHandlers、Android は addJavascriptInterface
+    return window.webkit?.messageHandlers?.cutlog || window.CutlogNative || null;
+  },
+  get available() { return !!this.bridge; },
+  get platform() {
+    if (window.webkit?.messageHandlers?.cutlog) return 'ios';
+    if (window.CutlogNative) return 'android';
+    return 'web';
+  },
+  capture(payload) {
+    const b = this.bridge;
+    if (!b) return false;
+    const msg = { type: 'capture', ...payload };
+    if (b.postMessage) b.postMessage(msg);            // iOS
+    else if (b.capture) b.capture(JSON.stringify(msg)); // Android
+    else return false;
+    return true;
+  },
+};
+
+// ネイティブ側から呼び返してもらう窓口
+window.cutlogNative = {
+  async onResult(res) {
+    const r = typeof res === 'string' ? JSON.parse(res) : (res || {});
+    if (!r.ok) {
+      if (r.error) toast(`撮影できませんでした: ${r.error}`, 5000);
+      return;
+    }
+    toast('カットを保存しました');
+    await refreshAfterChange();
+  },
+};
+
+// ネイティブの殻に撮影を任せる。任せられなければ false を返す。
+function captureViaNative() {
+  if (!nativeShell.available) return false;
+  const logId = state.captureLogId || state.logId;
+  if (!logId) return false;
+  return nativeShell.capture({
+    baseUrl: location.origin,
+    logId,
+    seconds: Number(state.log?.cut_seconds) || CLIP_SECONDS_DEFAULT,
+    tzOffset: new Date().getTimezoneOffset(),
+  });
+}
+
 // ── 撮影 ────────────────────────────────────────────────
 function updateCapDest() {
   const l = state.logs.find((x) => x.id === state.captureLogId);
@@ -1534,28 +1599,16 @@ function askPlace() {
   );
 }
 
+// 撮れる範囲は16:9。縦持ちのときは上下に余白が出るので、その旨だけ伝える。
 function paintCamHint() {
   const portrait = window.matchMedia?.('(orientation: portrait)').matches;
   $('#camHint').hidden = !portrait;
-}
-
-// 画面の向きを固定できる端末では、そうしておく（Androidなど）。
-// iPhoneは受け付けないので、そのときは見た目を倒すやり方に任せる。
-async function lockLandscape() {
-  try {
-    await screen.orientation?.lock?.('landscape');
-  } catch { /* 受け付けない端末では何もしない */ }
-}
-
-function unlockOrientation() {
-  try { screen.orientation?.unlock?.(); } catch { /* 同上 */ }
 }
 
 async function openCapture() {
   const dlg = $('#captureDialog');
   dlg.showModal();
   paintCamHint();
-  lockLandscape();
   askPlace();
   state.captureLogId = state.logId;
   updateCapDest();
@@ -1807,7 +1860,6 @@ function paintZoom() {
 
 function closeCapture() {
   stopStream();
-  unlockOrientation();
   pending = null;
   endReview();
   $('#captureDialog').close();

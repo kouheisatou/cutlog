@@ -1006,20 +1006,9 @@ dialog.sheet.cam { align-items: stretch; justify-content: center; }
 dialog.sheet.cam .capture { border-radius: 0; }
 dialog.sheet.cam .panel { border-radius: 0; }
 
-/* ★撮るのは横。画面が縦のままでも、撮影の画面だけは横向きで出す。
-   端末を横に倒せば、そのまま正しい向きになる。
-   （画面の向きを固定する仕組みは iPhone では効かないので、こちらで倒す） */
-@media (orientation: portrait) {
-  dialog.sheet.cam .capture {
-    position: fixed;
-    top: 50%; left: 50%;
-    width: 100dvh;                 /* 縦横を入れ替える */
-    height: 100vw;
-    /* 端末を時計回りに倒すと、そのまま正しい向きになる向きで置く */
-    transform: translate(-50%, -50%) rotate(-90deg);
-    transform-origin: center center;
-  }
-}
+/* ブラウザでの撮影は、画面をそのまま使う素直な作りにしておく。
+   （倒したり向きを変えたりはしない。端末の力を借りた撮影は、
+     iOS / Android のアプリの殻が受け持つ） */
 
 /* 詳細のシートは、広い画面では少しゆとりを持たせる */
 .wide-panel { width: min(720px, 100%); }
