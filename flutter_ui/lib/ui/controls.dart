@@ -141,34 +141,33 @@ class LabeledField extends StatelessWidget {
     final Typo t = Typo(c);
     final Space sp = spaceOf(context);
 
-    return Padding(
-      // CSS: .form label { margin-bottom: var(--s4) }
-      padding: EdgeInsets.only(bottom: sp.s4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Text(upper(label), style: t.formLabel),
-          SizedBox(height: sp.s1),                     // CSS: .form input { margin-top: var(--s1) }
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: c.hair)),
-            ),
-            child: TextField(
-              controller: controller,
-              obscureText: obscure,
-              style: t.formInput,
-              cursorColor: c.ink,
-              decoration: const InputDecoration(
-                isDense: true,
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
-              ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(upper(label), style: t.formLabel),
+        SizedBox(height: sp.s1),                       // CSS: .form input { margin-top: var(--s1) }
+        // ★ 高さは決め打ちにする。TextField は書体の言い分で高さを決めるので、
+        //   CSS の「余白 6 ＋ 行 27.2 ＋ 余白 6 ＋ 線 1」に合わない。
+        Container(
+          height: 40.2,
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: c.hair)),
+          ),
+          child: TextField(
+            controller: controller,
+            obscureText: obscure,
+            style: t.formInput,
+            cursorColor: c.ink,
+            decoration: const InputDecoration(
+              isDense: true,
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

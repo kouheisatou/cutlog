@@ -97,8 +97,10 @@ class Typo {
   /// .cal-month-head strong — mono 13px 600 .12em
   TextStyle get calMonth => _base(fontSize: 13, color: c.ink, weight: FontWeight.w600, letterSpacing: 1.56, mono: true);
 
-  /// .brand — 20px 500 .22em
-  TextStyle get brand => _base(fontSize: 20, color: c.ink, weight: FontWeight.w500, letterSpacing: 4.4);
+  /// .brand — 等幅 20px 500 .22em（大文字にはしない）
+  /// ★ .brand は等幅の一覧に入っている。地の書体で出すと字幅がまるごと変わる。
+  TextStyle get brand =>
+      _base(fontSize: 20, color: c.ink, weight: FontWeight.w500, letterSpacing: 4.4, mono: true);
 
   /// .form label — mono 11px .14em mute 大文字
   TextStyle get formLabel => _base(fontSize: 11, color: c.mute, letterSpacing: 1.54, mono: true);
@@ -108,6 +110,10 @@ class Typo {
 
   /// .tab（ログイン画面の切り替え）— 11px mute
   TextStyle get authTab => _base(fontSize: 11, color: c.mute, letterSpacing: 1.76, mono: true);
+
+  /// .check — mono 11px .12em mute 大文字。行の高さだけ 1.2（他より詰まっている）
+  TextStyle get check => _base(fontSize: 11, color: c.mute, letterSpacing: 1.32, mono: true,
+      lineHeightPx: 11 * 1.2);
 
   /// .panel-row label — mono 11px .12em mute 大文字
   TextStyle get panelLabel => _base(fontSize: 11, color: c.mute, letterSpacing: 1.32, mono: true);

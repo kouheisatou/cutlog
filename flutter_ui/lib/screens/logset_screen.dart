@@ -58,11 +58,23 @@ class LogSetScreen extends StatelessWidget {
               ]), top: sp.s2, bottom: sp.s2),
 
               // 既定の記録先にするか
-              Block(_row(<Widget>[
-                const _Check(),
-                SizedBox(width: sp.s1),
-                _Label('デフォルトでこのログに保存する', t),
-              ]), top: sp.s2, bottom: sp.s2),
+              // ★ .check は高さの下限が 32px。行の高さも 1.2 で他より詰まっている。
+              //   ここを他の行と同じにすると、以降の並びがまとめて上へ寄る。
+              Block(
+                ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 32),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: <Widget>[
+                      const _Check(),
+                      SizedBox(width: sp.s1),
+                      Text(upper('デフォルトでこのログに保存する'), style: t.check),
+                    ],
+                  ),
+                ),
+                top: sp.s2,
+                bottom: sp.s2,
+              ),
 
               Block(_row(<Widget>[const PrimaryBtn('保存')]), top: sp.s2, bottom: sp.s2),
 

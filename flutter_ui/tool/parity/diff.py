@@ -89,11 +89,17 @@ def main():
     out_dir = root / "diff"
 
     # 画面ごとの「測らないところ」を screens.mjs から読む
+    # ★ 画面ごとに切ってから読む。まとめて拾うと、次の画面の除外枠を
+    #   手前の画面に当ててしまい、差が小さく見えてしまう（実際に一度そうなった）。
     ignores = {}
     src = (Path(__file__).parent / "screens.mjs").read_text()
-    for m in re.finditer(r"name: '([a-z0-9-]+)',[\s\S]{0,400}?ignore: (\[[^\]]*\])", src):
-        ignores[m.group(1)] = json.loads(m.group(2).replace("x:", '"x":').replace("y:", '"y":')
-                                         .replace("w:", '"w":').replace("h:", '"h":'))
+    for chunk in src.split("\n  {"):
+        name = re.search(r"name: '([a-z0-9-]+)'", chunk)
+        box = re.search(r"ignore: (\[[^\]]*\])", chunk)
+        if name and box:
+            ignores[name.group(1)] = json.loads(
+                box.group(1).replace("x:", '"x":').replace("y:", '"y":')
+                .replace("w:", '"w":').replace("h:", '"h":'))
 
     report = {}
     for ref in sorted(ref_dir.glob("*.png")):

@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import '../design/text.dart';
 import '../design/tokens.dart';
 import '../ui/controls.dart';
+import '../ui/flow.dart';
 
 class AuthScreen extends StatelessWidget {
   const AuthScreen({super.key, this.signup = false});
@@ -26,15 +27,13 @@ class AuthScreen extends StatelessWidget {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 360),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                // CSS: .brand — 等幅・字間 .22em・下に s5 の余白
-                Text('cutlog', style: t.brand),
-                SizedBox(height: sp.s5),
-
-                // CSS: .tabs { gap: var(--s3); margin: 0 0 var(--s4) }
+            // ★ 縦のマージンは重なって1つになる。いちばん下の入力の下マージン(16)と
+            //   ボタンの上マージン(18)は、足すのではなく大きい方だけが残る。
+            child: CssColumn(<Block>[
+              // CSS: .brand — 等幅・字間 .22em・下に s5 の余白
+              Block(Text('cutlog', style: t.brand), bottom: sp.s5),
+              // CSS: .tabs { gap: var(--s3); margin: 0 0 var(--s4) }
+              Block(
                 Row(
                   children: <Widget>[
                     _Tab('ログイン', active: !signup),
@@ -42,19 +41,14 @@ class AuthScreen extends StatelessWidget {
                     _Tab('新規登録', active: signup),
                   ],
                 ),
-                SizedBox(height: sp.s4),
-
-                const LabeledField(label: 'ユーザー名'),
-                if (signup) const LabeledField(label: '表示名'),
-                const LabeledField(label: 'パスワード', obscure: true),
-
-                // CSS: .btn.block { margin-top: var(--s3) }
-                Padding(
-                  padding: EdgeInsets.only(top: sp.s3),
-                  child: PrimaryBtn(signup ? '新規登録' : 'ログイン', block: true),
-                ),
-              ],
-            ),
+                bottom: sp.s4,
+              ),
+              Block(const LabeledField(label: 'ユーザー名'), bottom: sp.s4),
+              if (signup) Block(const LabeledField(label: '表示名'), bottom: sp.s4),
+              Block(const LabeledField(label: 'パスワード', obscure: true), bottom: sp.s4),
+              // CSS: .btn.block { margin-top: var(--s3) }
+              Block(PrimaryBtn(signup ? '新規登録' : 'ログイン', block: true), top: sp.s3),
+            ], outer: false),
           ),
         ),
       ),
