@@ -65,7 +65,8 @@ class _DayScreenState extends State<DayScreen> {
     // 進み具合の線を動かすため、再生位置の変化をそのまま画面へ流す
     next.addListener(_tick);
     try {
-      await next.initialize();
+      // ★ 返ってこないことがある（web の video_player）。待ちきりにしない。
+      await next.initialize().timeout(const Duration(seconds: 6));
     } catch (e) {
       // ★ 黙って黒いままにしない。読めなかったことが分かるようにする。
       debugPrint('cutlog: 動画を開けません ${widget.mediaUrl(cut.url)} — $e');

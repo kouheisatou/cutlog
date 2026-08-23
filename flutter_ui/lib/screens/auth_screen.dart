@@ -7,11 +7,43 @@ import '../design/tokens.dart';
 import '../ui/controls.dart';
 import '../ui/flow.dart';
 
-class AuthScreen extends StatelessWidget {
-  const AuthScreen({super.key, this.signup = false});
+class AuthScreen extends StatefulWidget {
+  const AuthScreen({super.key, this.onSubmit});
 
-  /// 「新規登録」の側を選んでいるか
-  final bool signup;
+  /// ユーザー名とパスワードを渡す。うまくいかなければ、その訳が返る。
+  final Future<String?> Function(String username, String password)? onSubmit;
+
+  @override
+  State<AuthScreen> createState() => _AuthScreenState();
+}
+
+class _AuthScreenState extends State<AuthScreen> {
+  final TextEditingController _user = TextEditingController();
+  final TextEditingController _pass = TextEditingController();
+  bool signup = false;
+  String? _error;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _user.dispose();
+    _pass.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_busy || widget.onSubmit == null) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final String? bad = await widget.onSubmit!(_user.text.trim(), _pass.text);
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _error = bad;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,18 +68,24 @@ class AuthScreen extends StatelessWidget {
               Block(
                 Row(
                   children: <Widget>[
-                    _Tab('ログイン', active: !signup),
+                    _Tab('ログイン', active: !signup, onTap: () => setState(() => signup = false)),
                     SizedBox(width: sp.s3),
-                    _Tab('新規登録', active: signup),
+                    _Tab('新規登録', active: signup, onTap: () => setState(() => signup = true)),
                   ],
                 ),
                 bottom: sp.s4,
               ),
-              Block(const LabeledField(label: 'ユーザー名'), bottom: sp.s4),
+              Block(LabeledField(label: 'ユーザー名', controller: _user), bottom: sp.s4),
               if (signup) Block(const LabeledField(label: '表示名'), bottom: sp.s4),
-              Block(const LabeledField(label: 'パスワード', obscure: true), bottom: sp.s4),
+              Block(LabeledField(label: 'パスワード', obscure: true, controller: _pass), bottom: sp.s4),
+              // CSS: .error { color: ink; font-size: 13px; margin: var(--s2) 0 0 }
+              if (_error != null)
+                Block(Text(_error!, style: t.body.copyWith(fontSize: 13)), top: sp.s2),
               // CSS: .btn.block { margin-top: var(--s3) }
-              Block(PrimaryBtn(signup ? '新規登録' : 'ログイン', block: true), top: sp.s3),
+              Block(
+                PrimaryBtn(signup ? '新規登録' : 'ログイン', block: true, onTap: _submit),
+                top: sp.s3,
+              ),
             ], outer: false),
           ),
         ),
@@ -58,23 +96,28 @@ class AuthScreen extends StatelessWidget {
 
 /// CSS: .tab — 選んでいる方だけ濃く、下に1本だけ線を引く。
 class _Tab extends StatelessWidget {
-  const _Tab(this.label, {required this.active});
+  const _Tab(this.label, {required this.active, this.onTap});
 
   final String label;
   final bool active;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final Palette c = colorsOf(context);
 
-    return Container(
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
       padding: const EdgeInsets.only(bottom: 4),
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: active ? c.ink : const Color(0x00000000))),
       ),
-      child: Text(
-        upper(label),
-        style: Typo(c).authTab.copyWith(color: active ? c.ink : c.mute),
+        child: Text(
+          upper(label),
+          style: Typo(c).authTab.copyWith(color: active ? c.ink : c.mute),
+        ),
       ),
     );
   }

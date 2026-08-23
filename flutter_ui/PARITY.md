@@ -74,15 +74,30 @@ cd flutter_ui
 | all-search（検索） | できた | 3.00% |
 | cut（カットの詳細） | できた | 10.07%（下記） |
 
+## iOS で動かす
+
+```bash
+flutter build ios --simulator --debug --dart-define=CUTLOG_BASE=http://localhost:8787
+xcrun simctl boot "iPhone 17 Pro"
+xcrun simctl install booted build/ios/iphonesimulator/Runner.app
+xcrun simctl launch booted dev.cutlog.cutlog
+xcrun simctl io booted screenshot /tmp/ios.png
+```
+
+- 起動してログイン画面が出るところまで確かめてある（`/tmp/ios3.png`）。
+- 鍵（cookie）は web ではブラウザが持つが、端末では誰も持たない。
+  `Api` が預かって毎回付ける。ここは `test/api_test.dart` で本物のサーバ相手に試してある。
+- ★ 書く所（TextField）は `Material` の下に居ないと組み上がらない。根に透けたものを1枚敷いてある。
+
 ## 次にやること（上から順に）
 
-1. **web で動画が動かない件**（下の「詰まっているところ」）。これが直ると cut の 10% も消える。
-2. **iOS / Android の実機で動かす**。まだ web でしか出していない。
-   `flutter run -d <端末>` で立ち上げ、撮影・地図・再生を実際に触って確かめる。
-   API の行き先は `--dart-define=CUTLOG_BASE=http://<母艦のIP>:8787` で渡す。
+1. **実機で触って確かめる**。シミュレータでログインし、撮影・地図・つないだ再生まで通す。
+   Android も同じように出す（`flutter run -d <端末>`）。
+2. **web で動画が動かない件**（下の「詰まっているところ」）。これが直ると cut の 10% も消える。
 3. **残りの操作**。書き出し・共有リンク・移動・コメント・ゴミ箱・リマインダーは、
    画面の形だけ写してあって中身が動かない。API はすでに `lib/data/api.dart` にある。
-4. **細かいずれ潰し**。下の「残っている細かいずれ」を参照。
+4. **撮影を本物のカメラにする**。いまは映像の入る枠だけ。`camera` パッケージを足す。
+5. **細かいずれ潰し**。下の「残っている細かいずれ」を参照。
 
 ## 測りきれないもの
 

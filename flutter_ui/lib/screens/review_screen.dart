@@ -49,7 +49,13 @@ class _ReviewScreenState extends State<ReviewScreen> {
     p.addListener(() {
       if (mounted) setState(() {});
     });
-    await p.initialize();
+    // ★ 返ってこないことがある（web の video_player）。待ちきりにしない。
+    try {
+      await p.initialize().timeout(const Duration(seconds: 6));
+    } catch (e) {
+      await p.dispose();
+      return;
+    }
     if (!mounted) {
       await p.dispose();
       return;

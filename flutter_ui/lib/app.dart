@@ -45,12 +45,17 @@ class _Root extends StatelessWidget {
       palette: dark ? Palette.darkMode : Palette.lightMode,
       space: Space.forWidth(mq.size.width),
       child: Builder(
-        builder: (BuildContext context) => DefaultTextStyle(
-          // ★ 敷かないと、字の指定が無い所に Flutter の目印（黄色い二重下線）が出る。
-          style: Typo.of(context).body,
-          child: ColoredBox(
-            color: colorsOf(context).paper,
-            child: const _Host(),
+        builder: (BuildContext context) => Material(
+          // ★ 書く所（TextField）は Material の下に居ないと組み上がらない。
+          //   見た目は足したくないので、透けたものを1枚だけ敷く。
+          type: MaterialType.transparency,
+          child: DefaultTextStyle(
+            // ★ 敷かないと、字の指定が無い所に Flutter の目印（黄色い二重下線）が出る。
+            style: Typo.of(context).body,
+            child: ColoredBox(
+              color: colorsOf(context).paper,
+              child: const _Host(),
+            ),
           ),
         ),
       ),
@@ -76,6 +81,7 @@ class _HostState extends State<_Host> {
   Me? _me;
   Map<String, dynamic> _config = <String, dynamic>{};
   String? _error;
+  bool _needAuth = false;
 
   // いまいる場所
   String _tab = 'logs';
@@ -102,6 +108,8 @@ class _HostState extends State<_Host> {
       setState(() => _logs = <LogItem>[]);
       return;
     }
+    // 前に入ったときの鍵を思い出す（web ではブラウザが持っている）
+    await _api.restore();
     try {
       final List<Object?> got = await Future.wait(<Future<Object?>>[
         _api.logs(), _api.me(), _api.config(), _api.allCuts(),
@@ -116,8 +124,29 @@ class _HostState extends State<_Host> {
       // 見比べのときは、決まったログを開いた状態にしておく
       if (_shot != null) await _openLog(_target, quiet: true);
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (!mounted) return;
+      // 鍵が無い・切れているときは、ログインの画面を出す。それ以外は訳を出す。
+      if (e.toString().contains('401')) {
+        setState(() {
+          _needAuth = true;
+          _logs = <LogItem>[];
+        });
+      } else {
+        setState(() => _error = e.toString());
+      }
     }
+  }
+
+  Future<String?> _signIn(String username, String password) async {
+    final String? bad = await _api.login(username, password);
+    if (bad != null) return bad;
+    if (!mounted) return null;
+    setState(() {
+      _needAuth = false;
+      _logs = null;
+    });
+    await _load();
+    return null;
   }
 
   /// 見比べで開くログ。中身があるものを選ぶ。
@@ -174,6 +203,7 @@ class _HostState extends State<_Host> {
   @override
   Widget build(BuildContext context) {
     if (_error != null) return _Note('つながりません: $_error');
+    if (_needAuth && _shot == null) return AuthScreen(onSubmit: _signIn);
     if (_logs == null) return const SizedBox.shrink();
 
     final String where = _shot ?? _current;
@@ -217,7 +247,7 @@ class _HostState extends State<_Host> {
   Widget _pageFor(String where) {
     switch (where) {
       case 'auth':
-        return const AuthScreen();
+        return AuthScreen(onSubmit: _signIn);
 
       case 'review':
         final Cut? last = _cuts.isEmpty ? null : _cuts.first;
