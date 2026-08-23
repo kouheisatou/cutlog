@@ -10,11 +10,20 @@ import '../design/tokens.dart';
 import '../ui/shell.dart';
 
 class LogsScreen extends StatelessWidget {
-  const LogsScreen({super.key, required this.logs, required this.mediaUrl, this.onOpen});
+  const LogsScreen({
+    super.key,
+    required this.logs,
+    required this.mediaUrl,
+    this.onOpen,
+    this.onSearch,
+    this.onAdd,
+  });
 
   final List<LogItem> logs;
   final String Function(String path) mediaUrl;
   final ValueChanged<LogItem>? onOpen;
+  final VoidCallback? onSearch;
+  final VoidCallback? onAdd;
 
   @override
   Widget build(BuildContext context) {
@@ -25,8 +34,8 @@ class LogsScreen extends StatelessWidget {
       children: <Widget>[
         TopBar(children: <Widget>[
           const Spacer(),
-          const IconBtn('search'),
-          const IconBtn('plus'),
+          IconBtn('search', onTap: onSearch),
+          IconBtn('plus', onTap: onAdd),
         ]),
         Expanded(
           child: ScreenBody(

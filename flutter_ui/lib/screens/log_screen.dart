@@ -8,12 +8,20 @@ import '../design/tokens.dart';
 import '../ui/shell.dart';
 
 class LogScreen extends StatefulWidget {
-  const LogScreen({super.key, required this.log, required this.cuts, this.onBack, this.onDay});
+  const LogScreen({
+    super.key,
+    required this.log,
+    required this.cuts,
+    this.onBack,
+    this.onDay,
+    this.onSettings,
+  });
 
   final LogItem log;
   final List<Cut> cuts;
   final VoidCallback? onBack;
   final ValueChanged<String>? onDay;
+  final VoidCallback? onSettings;
 
   @override
   State<LogScreen> createState() => _LogScreenState();
@@ -85,7 +93,7 @@ class _LogScreenState extends State<LogScreen> {
         TopBar(children: <Widget>[
           IconBtn('back', onTap: widget.onBack),
           Crumbs(items: <String>['ログ', widget.log.name]),
-          const IconBtn('settings'),
+          IconBtn('settings', onTap: widget.onSettings),
         ]),
         Expanded(
           child: SingleChildScrollView(

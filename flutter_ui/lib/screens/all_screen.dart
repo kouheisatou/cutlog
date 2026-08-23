@@ -8,10 +8,18 @@ import '../design/tokens.dart';
 import '../ui/shell.dart';
 
 class AllScreen extends StatelessWidget {
-  const AllScreen({super.key, required this.cuts, required this.mediaUrl});
+  const AllScreen({
+    super.key,
+    required this.cuts,
+    required this.mediaUrl,
+    this.onOpen,
+    this.onSearch,
+  });
 
   final List<Cut> cuts;
   final String Function(String path) mediaUrl;
+  final ValueChanged<Cut>? onOpen;
+  final VoidCallback? onSearch;
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +35,7 @@ class AllScreen extends StatelessWidget {
     final List<Widget> rows = <Widget>[];
     for (int i = 0; i < days.length; i++) {
       rows.add(_DayHead(date: days[i], count: byDay[days[i]]!.length, first: i == 0));
-      rows.add(_PhotoGrid(cuts: byDay[days[i]]!, mediaUrl: mediaUrl));
+      rows.add(_PhotoGrid(cuts: byDay[days[i]]!, mediaUrl: mediaUrl, onOpen: onOpen));
     }
 
     return Column(
@@ -35,7 +43,7 @@ class AllScreen extends StatelessWidget {
       children: <Widget>[
         TopBar(children: <Widget>[
           const Spacer(),
-          const IconBtn('search'),
+          IconBtn('search', onTap: onSearch),
           const IconBtn('plus'),
         ]),
         Expanded(
@@ -97,10 +105,11 @@ class _DayHead extends StatelessWidget {
 
 /// CSS: .photo-grid — repeat(auto-fill, minmax(88px, 1fr))、すきまは 2px。
 class _PhotoGrid extends StatelessWidget {
-  const _PhotoGrid({required this.cuts, required this.mediaUrl});
+  const _PhotoGrid({required this.cuts, required this.mediaUrl, this.onOpen});
 
   final List<Cut> cuts;
   final String Function(String path) mediaUrl;
+  final ValueChanged<Cut>? onOpen;
 
   static const double _gap = 2;
   static const double _min = 88;
@@ -124,7 +133,7 @@ class _PhotoGrid extends StatelessWidget {
               children: <Widget>[
                 for (int j = 0; j < line.length; j++) ...<Widget>[
                   if (j > 0) const SizedBox(width: _gap),
-                  _PhotoCell(cut: line[j], side: side, mediaUrl: mediaUrl),
+                  _PhotoCell(cut: line[j], side: side, mediaUrl: mediaUrl, onOpen: onOpen),
                 ],
               ],
             ));
@@ -139,18 +148,22 @@ class _PhotoGrid extends StatelessWidget {
 
 /// CSS: .photo-cell — 正方形。下に時刻とログ名を、暗がりの上に置く。
 class _PhotoCell extends StatelessWidget {
-  const _PhotoCell({required this.cut, required this.side, required this.mediaUrl});
+  const _PhotoCell({required this.cut, required this.side, required this.mediaUrl, this.onOpen});
 
   final Cut cut;
   final double side;
   final String Function(String path) mediaUrl;
+  final ValueChanged<Cut>? onOpen;
 
   @override
   Widget build(BuildContext context) {
     final Palette c = colorsOf(context);
     final Typo t = Typo(c);
 
-    return SizedBox(
+    return GestureDetector(
+      onTap: onOpen == null ? null : () => onOpen!(cut),
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
       width: side,
       height: side,
       child: Stack(
@@ -190,6 +203,7 @@ class _PhotoCell extends StatelessWidget {
             ),
           ),
         ],
+      ),
       ),
     );
   }
