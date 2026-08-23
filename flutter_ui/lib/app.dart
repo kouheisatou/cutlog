@@ -8,7 +8,9 @@ import 'data/api.dart';
 import 'data/models.dart';
 import 'design/text.dart';
 import 'design/tokens.dart';
+import 'screens/auth_screen.dart';
 import 'screens/logs_screen.dart';
+import 'screens/settings_screen.dart';
 import 'ui/shell.dart';
 
 class CutlogApp extends StatelessWidget {
@@ -56,6 +58,8 @@ class _Host extends StatefulWidget {
 class _HostState extends State<_Host> {
   final Api _api = Api();
   List<LogItem>? _logs;
+  Me? _me;
+  Map<String, dynamic> _config = <String, dynamic>{};
   String? _error;
 
   @override
@@ -65,20 +69,35 @@ class _HostState extends State<_Host> {
   }
 
   Future<void> _load() async {
+    // ログインの前に出す画面（#/shot/auth）では、鍵が要るものを取りに行かない。
+    if (_shot == 'auth') {
+      setState(() => _logs = <LogItem>[]);
+      return;
+    }
     try {
-      final List<LogItem> logs = await _api.logs();
-      if (mounted) setState(() => _logs = logs);
+      final List<Object?> got = await Future.wait(<Future<Object?>>[
+        _api.logs(), _api.me(), _api.config(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _logs = got[0]! as List<LogItem>;
+        _me = got[1] as Me?;
+        _config = got[2]! as Map<String, dynamic>;
+      });
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     }
   }
 
-  /// #/shot/<名前> を読み取る。無ければ最初の画面。
-  String get _shot {
-    final String f = Uri.base.fragment;
-    final Match? m = RegExp(r'^/shot/([a-z0-9-]+)$').firstMatch(f);
-    return m?.group(1) ?? 'logs';
-  }
+  /// web の設定画面と同じ文言。通知のキーが無いサーバでは、その旨だけを出す。
+  String get _pushHint => _config['vapidPublicKey'] == null
+      ? 'このサーバは通知のキー（VAPID）が未設定です。管理者が .env に設定すると使えます。'
+      : '';
+
+  /// ?shot=<名前> を読み取る。無ければ最初の画面。
+  /// ★ 井桁（#）の側は Flutter の道案内が自分のものとして書き換えてしまう。
+  ///   こちらが指した行き先が消えるので、問い合わせ（?）の側に置く。
+  String get _shot => Uri.base.queryParameters['shot'] ?? 'logs';
 
   @override
   Widget build(BuildContext context) {
@@ -86,6 +105,16 @@ class _HostState extends State<_Host> {
     if (_logs == null) return const SizedBox.shrink();
 
     switch (_shot) {
+      case 'auth':
+        return const AuthScreen();
+      case 'settings':
+        return Screen(
+          tab: 'settings',
+          child: SettingsScreen(
+            me: _me ?? Me(id: '', username: '', displayName: ''),
+            pushHint: _pushHint,
+          ),
+        );
       case 'logs':
         return Screen(
           tab: 'logs',

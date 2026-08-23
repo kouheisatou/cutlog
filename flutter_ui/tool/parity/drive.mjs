@@ -61,9 +61,9 @@ export async function driveWeb(page, screen, base) {
 /** Flutter 側は、行き先を名前で直に指せるようにしてある */
 export async function driveFlutter(page, screen, base) {
   if (!screen.signedOut) await signIn(page, base);
-  // ★ ハッシュだけ変えても頁は入れ替わらない。
-  //   鍵を持たないまま動き出した1回目が残ってしまうので、行き先を決めてから必ず読み込み直す。
-  await page.goto(`${base}/#/shot/${screen.name}`, { waitMs: 200 });
+  // ★ 行き先は問い合わせ（?shot=）で渡す。井桁の側は Flutter の道案内が書き換えてしまう。
+  //   鍵を持たないまま動き出した1回目が残らないよう、行き先を決めてから必ず読み込み直す。
+  await page.goto(`${base}/?shot=${screen.name}`, { waitMs: 200 });
   await page.reload({ waitMs: 1800 });
   await page.settle(600);
 }
