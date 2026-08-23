@@ -5,6 +5,7 @@
 //   進み具合の線は映像のすぐ下に1本だけ。行ごとには付けない。
 //   ★行が全部こまかく動くと、どれを見ているのか分からなくなる。
 //     区切りの帯を時間で動かすのをやめたのと同じ理由。
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/widgets.dart';
 import 'package:video_player/video_player.dart';
 
@@ -108,7 +109,7 @@ class _DayScreenState extends State<DayScreen> {
     if (_index >= widget.cuts.length) return const SizedBox.expand();
     final String? thumb = widget.cuts[_index].thumbUrl;
     if (thumb == null) return const SizedBox.expand();
-    return Center(child: Image.network(widget.mediaUrl(thumb), fit: BoxFit.contain));
+    return Center(child: CachedNetworkImage(imageUrl: widget.mediaUrl(thumb), fit: BoxFit.contain));
   }
 
   @override
@@ -271,7 +272,7 @@ class _WheelRow extends StatelessWidget {
             clipBehavior: Clip.hardEdge,
             child: cut.thumbUrl == null
                 ? null
-                : Image.network(mediaUrl(cut.thumbUrl!), fit: BoxFit.cover),
+                : CachedNetworkImage(imageUrl: mediaUrl(cut.thumbUrl!), fit: BoxFit.cover),
           ),
           SizedBox(width: sp.s2),
           Expanded(

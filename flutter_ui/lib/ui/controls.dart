@@ -1,6 +1,7 @@
 // 押すもの・書くもの。CSS の .btn / .mini / .form / .panel-row の見た目をそのまま持つ。
 // ★ cutlog は「囲まない」作り。押せることは、下線と余白だけで示す。
 //   ここで枠を足すと、画面ぜんぶの手ざわりが変わってしまう。
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../design/icons.dart';
@@ -209,7 +210,7 @@ class Avatar extends StatelessWidget {
       decoration: BoxDecoration(color: c.paper2, shape: BoxShape.circle),
       clipBehavior: Clip.antiAlias,
       child: url != null
-          ? Image.network(url!, width: size, height: size, fit: BoxFit.cover)
+          ? CachedNetworkImage(imageUrl: url!, width: size, height: size, fit: BoxFit.cover)
           : Text(
               initial,
               style: TextStyle(

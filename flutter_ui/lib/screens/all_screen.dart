@@ -1,5 +1,6 @@
 // カット一覧。web の #allScreen をそのまま写す。
 // 写真のアプリのように、日付ごとに詰めて並べる。
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/widgets.dart';
 
 import '../data/models.dart';
@@ -173,7 +174,7 @@ class _PhotoCell extends StatelessWidget {
         fit: StackFit.expand,
         children: <Widget>[
           ColoredBox(color: c.paper2),
-          if (cut.thumbUrl != null) Image.network(mediaUrl(cut.thumbUrl!), fit: BoxFit.cover),
+          if (cut.thumbUrl != null) CachedNetworkImage(imageUrl: mediaUrl(cut.thumbUrl!), fit: BoxFit.cover),
           // CSS: .photo-cell .cap — 下から立ち上がる暗がりの上に、時刻とログ名を置く
           Positioned(
             left: 0,

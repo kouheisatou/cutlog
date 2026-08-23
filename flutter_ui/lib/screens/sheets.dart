@@ -1,5 +1,6 @@
 // 下からせり上がる札の中身。器（SheetPanel）は同じで、並べるものだけが違う。
 // ★ 閉じ方は標準の振る舞いに任せる。ここでは「何を並べるか」と「押したら何をするか」だけを書く。
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../data/models.dart';
@@ -153,7 +154,7 @@ Future<void> openCutSheet(
                   decoration: BoxDecoration(color: c.paper2),
                   child: cut.thumbUrl == null
                       ? null
-                      : Image.network(mediaUrl(cut.thumbUrl!), fit: BoxFit.contain),
+                      : CachedNetworkImage(imageUrl: mediaUrl(cut.thumbUrl!), fit: BoxFit.contain),
                 ),
               ),
             ),

@@ -4,6 +4,7 @@
 // ★ 近いピンは束ねる。束ねたものを押したときは、寄るのではなく中身の一覧へ進む。
 import 'dart:math' as math;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -185,7 +186,7 @@ class _Pin extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: cut.thumbUrl == null
               ? null
-              : Image.network(mediaUrl(cut.thumbUrl!), fit: BoxFit.cover),
+              : CachedNetworkImage(imageUrl: mediaUrl(cut.thumbUrl!), fit: BoxFit.cover),
         ),
         if (count > 1)
           Positioned(
