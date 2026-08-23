@@ -541,13 +541,15 @@ private final class ZoomStopButton: UIButton {
     override init(frame: CGRect) {
         super.init(frame: frame)
         titleLabel?.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
-        contentEdgeInsets = UIEdgeInsets(top: 0, left: 8, bottom: 0, right: 8)
         layer.cornerRadius = 14
         clipsToBounds = true
         isOn = false
+        // 字の左右の余白は、幅の下限で作る。
+        // contentEdgeInsets は iOS 15 で非推奨になっており、
+        // UIButton.Configuration を使う場合は無視される。
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: 28),
-            widthAnchor.constraint(greaterThanOrEqualToConstant: 40),
+            widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
         ])
     }
 
