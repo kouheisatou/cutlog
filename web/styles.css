@@ -35,8 +35,14 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 
-/* アイコンの型紙。並びの中で高さを作らないよう、流れから外しておく */
-.sprite { position: absolute !important; width: 0; height: 0; overflow: hidden; }
+/* アイコンの型紙。並びの中で高さを作らないよう、流れから外しておく。
+   ★以前は HTML の style 属性で指定していたが、
+     Content-Security-Policy の style-src 'self' に弾かれて効いていなかった。
+     （その結果、画面全体が行の高さのぶんだけ下へずれていた） */
+.sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* 共有ページは一段組み */
+.share-body { grid-template-columns: 1fr; }
 
 /* ── アプリらしい手ざわり ───────────────────────────────
    文字は掴めないようにして、押した所が青く光らないようにする。
