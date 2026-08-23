@@ -1708,9 +1708,7 @@ function closeCapture() {
   stopStream();
   unlockOrientation();
   pending = null;
-  $('#reviewBar').hidden = true;
-  $('#playback').hidden = true;
-  $('#preview').hidden = false;
+  endReview();
   $('#captureDialog').close();
 }
 
@@ -1737,7 +1735,7 @@ async function shoot() {
   recorder.onstop = () => {
     const blob = new Blob(chunks, { type: recorder.mimeType || 'video/webm' });
     pending = { blob, kind: 'video', durationMs: seconds * 1000, mime: blob.type };
-    showReview(URL.createObjectURL(blob), 'video');
+    showReview(URL.createObjectURL(blob));
   };
   recorder.start();
   const btn = $('#shootBtn');
@@ -1759,17 +1757,22 @@ async function shoot() {
   }, 1000);
 }
 
-function showReview(url, kind) {
+// 撮ったあとの確認。撮るための操作（シャッター・レンズ・ズーム・案内）は引っこめ、
+// 撮れたものだけを見せる。
+function showReview(url) {
+  $('.capture').classList.add('reviewing');
   $('#reviewBar').hidden = false;
-  if (kind === 'photo') {
-    $('#preview').hidden = true;
-    $('#playback').hidden = false;
-    $('#playback').src = url;
-  } else {
-    $('#preview').hidden = true;
-    $('#playback').hidden = false;
-    $('#playback').src = url;
-  }
+  $('#preview').hidden = true;
+  $('#playback').hidden = false;
+  $('#playback').src = url;
+}
+
+function endReview() {
+  $('.capture').classList.remove('reviewing');
+  $('#reviewBar').hidden = true;
+  $('#playback').hidden = true;
+  $('#playback').removeAttribute('src');
+  $('#preview').hidden = false;
 }
 
 let saving = false;
@@ -2549,7 +2552,9 @@ $('#flipCam').addEventListener('click', async () => {
 });
 $('#shootBtn').addEventListener('click', shoot);
 $('#retakeBtn').addEventListener('click', async () => {
-  pending = null; $('#reviewBar').hidden = true; await startStream();
+  pending = null;
+  endReview();
+  await startStream();
 });
 $('#saveCutBtn').addEventListener('click', saveCut);
 $('#zoomRange').addEventListener('input', (e) => applyZoom(e.target.value));
@@ -2573,7 +2578,7 @@ $('#fileInput').addEventListener('change', async (e) => {
   if (!file) return;
   if (!file.type.startsWith('video/')) { toast('動画を選んでください'); e.target.value = ''; return; }
   pending = { blob: file, kind: 'video', durationMs: null, mime: file.type, source: 'upload' };
-  showReview(URL.createObjectURL(file), 'video');
+  showReview(URL.createObjectURL(file));
 });
 wireModals();
 
