@@ -42,12 +42,22 @@ export const SCREENS = [
     ],
   },
   {
+    // ★ ここだけは web を写さない。Flutter で組み直した画面なので、重ねる相手が居ない。
+    //   撮るのは Flutter 側だけ。目で見て確かめる。
     name: 'day',
-    title: 'その日（つないだ再生）',
+    title: 'その日（Flutter で作り直し）',
+    designOnly: true,
     steps: [
       { clickText: { sel: '#logsScreen .log-row', text: 'まいにち' } }, { wait: '#app .cal-day.has' },
       { click: '#app .cal-day.has' }, { wait: '#dayScreen .clip-row' },
     ],
+  },
+  {
+    // 撮影のあとの確認。web には無い、新しく作った画面。
+    name: 'review',
+    title: '撮影後の確認（新しく作った）',
+    designOnly: true,
+    steps: [],
   },
   {
     name: 'all',

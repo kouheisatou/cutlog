@@ -58,12 +58,18 @@ cd flutter_ui
 | settings（設定） | できた | 2.67% |
 | log（カレンダー） | まだ | — |
 | logset（ログの設定） | まだ | — |
-| day（その日） | **作り直す**（上のとおり） | 対象外 |
+| day（その日） | 作り直した（映像＋ドラム） | 対象外 |
 | all（カット一覧） | まだ | — |
 | map（マップ） | まだ | — |
 | capture（撮影） | 下書きあり（`tool/parity/capture_screen.dart.wip`） | — |
-| review（撮影後の確認） | **新しく作る** | 対象外 |
+| review（撮影後の確認） | 作った | 対象外 |
 | logs-add / logs-search / all-search / cut（シート） | まだ | — |
+
+## 詰まっているところ
+
+- **web で動画が始まらない**。`video_player` の `initialize()` が返ってこない。
+  素の `<video>` では同じ道の動画が読める（readyState 4）ので、道の側の問題ではない。
+  いまはサムネを敷いてしのいでいる。本命は iOS / Android なので、実機で確かめてから直す。
 
 ## 残っている細かいずれ
 

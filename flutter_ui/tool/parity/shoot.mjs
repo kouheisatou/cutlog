@@ -21,7 +21,9 @@ const only = arg('only', '');
 
 async function main() {
   mkdirSync(outDir, { recursive: true });
-  const list = only ? SCREENS.filter((s) => only.split(',').includes(s.name)) : SCREENS;
+  let list = only ? SCREENS.filter((s) => only.split(',').includes(s.name)) : SCREENS;
+  // web を写さない画面（Flutter で組み直したもの）は、本物の側では撮らない
+  if (target === 'web') list = list.filter((s) => !s.designOnly);
   const { browser, close } = await launchChrome();
   const report = [];
 

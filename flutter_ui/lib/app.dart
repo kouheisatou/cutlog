@@ -10,7 +10,9 @@ import 'design/text.dart';
 import 'design/tokens.dart';
 import 'screens/all_screen.dart';
 import 'screens/auth_screen.dart';
+import 'screens/day_screen.dart';
 import 'screens/logs_screen.dart';
+import 'screens/review_screen.dart';
 import 'screens/settings_screen.dart';
 import 'ui/shell.dart';
 
@@ -39,9 +41,14 @@ class _Root extends StatelessWidget {
       palette: dark ? Palette.darkMode : Palette.lightMode,
       space: Space.forWidth(mq.size.width),
       child: Builder(
-        builder: (BuildContext context) => ColoredBox(
-          color: colorsOf(context).paper,
-          child: const _Host(),
+        builder: (BuildContext context) => DefaultTextStyle(
+          // ★ 敷かないと、字の指定が無い所に Flutter の目印（黄色い二重下線）が出る。
+          //   CSS の body と同じものを一枚敷いて、そこから各所が上書きする形にする。
+          style: Typo.of(context).body,
+          child: ColoredBox(
+            color: colorsOf(context).paper,
+            child: const _Host(),
+          ),
         ),
       ),
     );
@@ -92,6 +99,9 @@ class _HostState extends State<_Host> {
     }
   }
 
+  /// いちばん新しいカットの日。
+  String get _newestDay => _cuts.isEmpty ? '' : _cuts.first.localDate;
+
   /// web の設定画面と同じ文言。通知のキーが無いサーバでは、その旨だけを出す。
   String get _pushHint => _config['vapidPublicKey'] == null
       ? 'このサーバは通知のキー（VAPID）が未設定です。管理者が .env に設定すると使えます。'
@@ -118,6 +128,25 @@ class _HostState extends State<_Host> {
             pushHint: _pushHint,
           ),
         );
+      case 'day':
+        {
+          // いちばん新しい日を出す。見比べのときに中身が空だと形が分からない。
+          final List<Cut> day = _cuts.where((Cut c) => c.localDate == _newestDay).toList()
+            ..sort((Cut a, Cut b) => a.takenAt.compareTo(b.takenAt));
+          return Screen(
+            tab: 'logs',
+            child: DayScreen(date: _newestDay, cuts: day, mediaUrl: _api.mediaUrl),
+          );
+        }
+      case 'review':
+        {
+          // 撮ったばかりのものの代わりに、いちばん新しいカットを置いて形を確かめる
+          final Cut? last = _cuts.isEmpty ? null : _cuts.first;
+          return ReviewScreen(
+            url: last == null ? '' : _api.mediaUrl(last.url),
+            destination: last?.logName,
+          );
+        }
       case 'all':
         return Screen(
           tab: 'all',

@@ -94,7 +94,8 @@ const DUMP = `(() => {
 
 async function main() {
   mkdirSync(outDir, { recursive: true });
-  const list = only ? SCREENS.filter((s) => only.split(',').includes(s.name)) : SCREENS;
+  const list = (only ? SCREENS.filter((s) => only.split(',').includes(s.name)) : SCREENS)
+    .filter((s) => !s.designOnly);
   const { browser, close } = await launchChrome();
 
   try {
