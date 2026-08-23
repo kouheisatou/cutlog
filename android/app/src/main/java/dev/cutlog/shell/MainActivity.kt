@@ -84,11 +84,25 @@ class MainActivity : AppCompatActivity() {
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(wv, true)
 
+        // 開発中だけ、外から WebView の中を覗けるようにする。
+        // これが無いと chrome://inspect も CDP も繋がらず、
+        // 画面の中で何が起きているのかを確かめる手立てが無くなる。
+        // 配布するビルドでは付かない。
+        if (BuildConfig.DEBUG) {
+            WebView.setWebContentsDebuggingEnabled(true)
+        }
+
         // Web 側は window.CutlogNative.capture(jsonString) を呼ぶ約束
         wv.addJavascriptInterface(Bridge(), "CutlogNative")
 
         wv.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                // 読んでいる間はぐるぐるを出す（まっさらな画面で待たせない）
+                binding.loading.visibility = View.VISIBLE
+            }
+
             override fun onPageFinished(view: WebView, url: String) {
+                binding.loading.visibility = View.GONE
                 // 開けたら覆いは外す（再試行で戻ってきた場合のため）
                 binding.errorPanel.visibility = View.GONE
             }
@@ -99,7 +113,10 @@ class MainActivity : AppCompatActivity() {
                 error: WebResourceError,
             ) {
                 // 主フレームが開けないときだけ知らせる。画像 1 枚の失敗で画面を奪わない。
-                if (request.isForMainFrame) showError(error.description?.toString())
+                if (request.isForMainFrame) {
+                    binding.loading.visibility = View.GONE
+                    showError(error.description?.toString())
+                }
             }
         }
 

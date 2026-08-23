@@ -13,6 +13,19 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!--
+      読み込み中の目印。Android では真ん中でぐるぐる回すのが作法。
+      WebView は読み込み中まっさらなので、これが無いと
+      「固まったのか、読んでいる最中なのか」が分からない。
+    -->
+    <ProgressBar
+        android:id="@+id/loading"
+        style="?android:attr/progressBarStyleLarge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:indeterminate="true" />
+
     <LinearLayout
         android:id="@+id/errorPanel"
         android:layout_width="match_parent"
