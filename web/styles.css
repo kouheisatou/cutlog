@@ -1013,3 +1013,9 @@ dialog.sheet.cam .panel { border-radius: 0; }
   .panel { border-radius: 18px; margin-bottom: var(--s5); }
   dialog.sheet { align-items: center; }
 }
+
+/* いま撮れている大きさ（手ぶれ補正の付く形式か見分ける手がかり） */
+.cap-spec {
+  color: #fff; opacity: .7; font-family: var(--mono); font-size: 9px;
+  letter-spacing: .06em; white-space: nowrap; flex: none;
+}

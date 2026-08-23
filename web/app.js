@@ -1342,6 +1342,21 @@ function askPlace() {
   );
 }
 
+// いま実際に撮れている大きさと滑らかさを、小さく出す。
+// 手ぶれ補正が付く形式かどうかを見分ける手がかりになる。
+function paintCamSpec() {
+  const t = stream?.getVideoTracks?.()[0];
+  const st = t?.getSettings?.() || {};
+  const el = $('#capSpec');
+  if (!st.width || !st.height) { el.textContent = ''; return; }
+  const bits = [`${st.width}×${st.height}`];
+  if (st.frameRate) bits.push(`${Math.round(st.frameRate)}fps`);
+  // 端末が手ぶれ補正の状態を教えてくれるなら、それも出す
+  const mode = st.videoStabilizationMode;
+  if (mode && mode !== 'none' && mode !== 'off') bits.push('手ぶれ補正');
+  el.textContent = bits.join(' ');
+}
+
 function paintCamHint() {
   const portrait = window.matchMedia?.('(orientation: portrait)').matches;
   $('#camHint').hidden = !portrait;
@@ -1430,12 +1445,15 @@ function preferredCameraId() {
 //   exact を使うと、その端末では一切開けなくなることがあるので使わない。
 function videoWants() {
   return {
-    // 横向きが主。4Kが出せるならもらう（出せなければ端末が落としてくれる）
-    width: { ideal: 3840 },
-    height: { ideal: 2160 },
+    // ★大きさは 1920×1080 を頼む。4Kにしない。
+    //   iPhoneは撮る形式ごとに手ぶれ補正の有無が決まっていて、
+    //   いちばん大きい形式では補正が付かないことがある。
+    //   1080/30 は補正の付く形式が選ばれやすく、2秒のクリップには十分きれい。
+    width: { ideal: 1920 },
+    height: { ideal: 1080 },
     frameRate: { ideal: 30 },
     aspectRatio: { ideal: 16 / 9 },
-    // 手ぶれ補正。iOS/Androidの一部だけが応える注文で、無ければ黙って無視される。
+    // 手ぶれ補正。応える端末にだけ効く注文で、無ければ黙って無視される。
     advanced: [
       { videoStabilizationMode: 'standard' },
       { imageStabilization: true },
@@ -1472,6 +1490,7 @@ async function startStream() {
       }
     }
     renderCameraPicker();
+    paintCamSpec();
     $('#preview').srcObject = stream;
     $('#preview').hidden = false;
     $('#playback').hidden = true;
@@ -1504,10 +1523,9 @@ async function applyBestTrackSettings(st) {
   if (Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) {
     wants.push({ focusMode: 'continuous' });
   }
-  // 出せる中でいちばん大きい絵にする
-  if (caps.width?.max && caps.height?.max) {
-    wants.push({ width: caps.width.max, height: caps.height.max });
-  }
+  // ★ここで「出せる中でいちばん大きい絵」に寄せてはいけない。
+  //   大きい形式には手ぶれ補正が付かないことがあり、
+  //   せっかく選ばれた補正つきの形式を捨ててしまう。
   if (!wants.length) return;
   await track.applyConstraints({ advanced: wants }).catch(() => {});
 }

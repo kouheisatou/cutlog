@@ -2,6 +2,7 @@
 // 誰も招待できず、行き先を選ばずに撮ったカットはここへ入る。
 import { db, nowIso } from '../db/index.js';
 import { id, inviteCode } from './util.js';
+import { config } from '../config.js';
 
 export const PRIVATE_LOG_NAME = 'プライベート';
 
@@ -17,7 +18,7 @@ export async function ensurePrivateLog(userId) {
     await db.run(
       `INSERT INTO logs (id, name, owner_id, invite_code, cut_seconds, kind, created_at, updated_at)
        VALUES (?,?,?,?,?,?,?,?)`,
-      [lid, PRIVATE_LOG_NAME, userId, inviteCode(), 3, 'private', now, now],
+      [lid, PRIVATE_LOG_NAME, userId, inviteCode(), config.media.cutSecondsDefault, 'private', now, now],
     );
   } catch (err) {
     // 同時に呼ばれて先に作られたときは、そちらを使う（一意索引が止めてくれる）
