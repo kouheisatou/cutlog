@@ -1,17 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="cutlog">
   <!--
     時間の軸を抽象にしたしるし。白地に細い黒の線だけ。
-    ・横一本が時間の流れ、縦の線が区切り。|—|—|— の形そのもの
-    ・部品を足さない。アイコンの大きさでは、線が数本あれば足りる
+    ・横一本が時間の流れ、縦の線が刻み。長い刻みと短い刻みで目盛りらしく見せる
     ・線は 1024 に対して 18。小さくしても潰れない下限に近い細さ
   -->
   <rect width="1024" height="1024" fill="#ffffff"/>
 
-  <g fill="none" stroke="#101012" stroke-width="18" stroke-linecap="round">
+  <g fill="none" stroke="#101012" stroke-width="18"
+     stroke-linecap="round" stroke-linejoin="round">
     <!-- 時間の軸 -->
-    <path d="M160 512h704"/>
+    <path d="M144 592h736"/>
 
-    <!-- 区切りの刻み -->
-    <path d="M160 424v176M395 424v176M629 424v176M864 424v176"/>
+    <!-- 長い刻み（区切り） -->
+    <path d="M144 512v160M512 512v160M880 512v160"/>
+
+    <!-- 短い刻み（その間） -->
+    <path d="M328 552v80M696 552v80"/>
+
+    <!-- 軸から立ち上がる線。その時刻に記録があることを表す -->
+    <path d="M328 416v96M696 360v152"/>
+  </g>
+
+  <g fill="#101012">
+    <circle cx="328" cy="356" r="18"/>
+    <circle cx="696" cy="300" r="18"/>
   </g>
 </svg>

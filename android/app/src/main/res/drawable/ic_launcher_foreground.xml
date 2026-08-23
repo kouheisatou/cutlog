@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   時間の軸を抽象にしたしるし。白地に細い黒の線だけ。
-  ・横一本が時間の流れ、縦の線が区切り。|—|—|— の形そのもの
+  ・横一本が時間の流れ、縦の線が刻み。長い刻みと短い刻みで目盛りらしく見せる
+  ・軸から立ち上がる線とその先の丸は、その時刻に記録があることを表す
+  ・丸と線のあいだは、はっきり分かるだけ空ける（線の端が丸いぶんも見込む）
   ・アダプティブアイコンは外周が切り落とされるので、絵は中央 72dp に収める
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
@@ -12,15 +14,37 @@
 
     <!-- 時間の軸 -->
     <path
-        android:pathData="M25,54 h58"
+        android:pathData="M23,62.5 h62"
         android:strokeColor="#101012"
         android:strokeWidth="1.9"
         android:strokeLineCap="round" />
 
-    <!-- 区切りの刻み -->
+    <!-- 長い刻み（区切り） -->
     <path
-        android:pathData="M25,46.5 v15 M44.3,46.5 v15 M63.7,46.5 v15 M83,46.5 v15"
+        android:pathData="M23,54 v17 M54,54 v17 M85,54 v17"
         android:strokeColor="#101012"
         android:strokeWidth="1.9"
         android:strokeLineCap="round" />
+
+    <!-- 短い刻み（その間） -->
+    <path
+        android:pathData="M38.5,58 v9 M69.5,58 v9"
+        android:strokeColor="#101012"
+        android:strokeWidth="1.9"
+        android:strokeLineCap="round" />
+
+    <!-- 軸から立ち上がる線 -->
+    <path
+        android:pathData="M38.5,44 v10 M69.5,38 v16"
+        android:strokeColor="#101012"
+        android:strokeWidth="1.9"
+        android:strokeLineCap="round" />
+
+    <!-- 立ち上がった先の丸 -->
+    <path
+        android:pathData="M38.5,40 m-1.9,0 a1.9,1.9 0 1,0 3.8,0 a1.9,1.9 0 1,0 -3.8,0"
+        android:fillColor="#101012" />
+    <path
+        android:pathData="M69.5,34 m-1.9,0 a1.9,1.9 0 1,0 3.8,0 a1.9,1.9 0 1,0 -3.8,0"
+        android:fillColor="#101012" />
 </vector>
