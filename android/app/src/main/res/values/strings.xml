@@ -7,9 +7,5 @@
     <string name="error_hint">つなぐ先はビルドのときに埋め込まれます。変えるにはリポジトリのルートの native.env を書き換えて、入れ直してください。</string>
     <string name="capture_start">撮る</string>
     <string name="capture_cancel">閉じる</string>
-    <string name="capture_flip">前と後ろを切り替える</string>
     <string name="capture_kind_video">動画</string>
-    <string name="capture_hint_landscape">横向きの範囲で記録されます</string>
-    <string name="capture_preparing">カメラを準備しています…</string>
-    <string name="capture_sending">送信中…</string>
 </resources>

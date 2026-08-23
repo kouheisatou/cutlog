@@ -1836,16 +1836,9 @@ function askPlace() {
   );
 }
 
-// 撮れる範囲は16:9。縦持ちのときは上下に余白が出るので、その旨だけ伝える。
-function paintCamHint() {
-  const portrait = window.matchMedia?.('(orientation: portrait)').matches;
-  $('#camHint').hidden = !portrait;
-}
-
 async function openCapture() {
   const dlg = $('#captureDialog');
   dlg.showModal();
-  paintCamHint();
   askPlace();
   state.captureLogId = state.logId;
   updateCapDest();
@@ -2979,8 +2972,6 @@ $('#retakeBtn').addEventListener('click', async () => {
 });
 $('#saveCutBtn').addEventListener('click', saveCut);
 $('#zoomRange').addEventListener('input', (e) => applyZoom(e.target.value));
-window.addEventListener('orientationchange', () => setTimeout(paintCamHint, 200));
-window.matchMedia?.('(orientation: portrait)').addEventListener?.('change', paintCamHint);
 // 二本指でつまむと寄る・引く
 let pinch0 = 0; let pinchZoom0 = 1;
 $('#preview').addEventListener('touchstart', (ev) => {

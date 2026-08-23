@@ -2,8 +2,11 @@
 <!--
   撮影画面。見た目は Web の撮影画面（web/index.html の #captureDialog）をなぞっている。
   同じアプリの同じ操作なので、殻の中と外で当たりが変わらない方がよいためである。
-    上： × ／ 記録先 ／ 前後の切り替え
-    下： 倍率の目印 ／ まるいシャッター（外周が一周したら録り終わり） ／「動画」
+    上： × ／ 記録先
+    下： 手ぶれ補正 ／ まるいシャッター（外周が一周したら録り終わり） ／「動画」
+
+  ★カメラは選ばせない。背面の広角（1倍）に固定する。
+  ★撮る前の画面に文字は重ねない。いちばん邪魔になるためである。
 
   端末のバーの逃げは CaptureActivity から padding で入れる（切り欠きの寸法は端末ごとに違うため）。
 -->
@@ -52,31 +55,9 @@
             android:textColor="#D9FFFFFF"
             android:textSize="12sp"
             tools:text="記録先 マイログ" />
-
-        <ImageButton
-            android:id="@+id/flipButton"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/capture_flip"
-            android:src="@drawable/ic_capture_flip" />
     </LinearLayout>
 
     <!-- ── 真ん中 ────────────────────────────────────── -->
-    <TextView
-        android:id="@+id/hintText"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:background="@drawable/capture_hint_bg"
-        android:paddingStart="14dp"
-        android:paddingTop="5dp"
-        android:paddingEnd="14dp"
-        android:paddingBottom="5dp"
-        android:textColor="#FFFFFF"
-        android:textSize="11sp"
-        tools:text="横向きの範囲で記録されます" />
-
     <ProgressBar
         android:id="@+id/busy"
         style="?android:attr/progressBarStyleLarge"
@@ -98,14 +79,6 @@
         android:paddingTop="14dp"
         android:paddingEnd="16dp"
         android:paddingBottom="16dp">
-
-        <LinearLayout
-            android:id="@+id/zoomRow"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginBottom="10dp"
-            android:orientation="horizontal" />
 
         <LinearLayout
             android:layout_width="match_parent"

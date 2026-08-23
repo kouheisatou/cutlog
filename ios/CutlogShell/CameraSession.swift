@@ -33,10 +33,6 @@ final class CameraSession: NSObject {
     private let queue = DispatchQueue(label: "dev.cutlog.shell.camera")
     private let movieOutput = AVCaptureMovieFileOutput()
     private(set) var device: AVCaptureDevice?
-    /// 前後を入れ替えるときに外す必要があるので、入力を持っておく
-    private var videoInput: AVCaptureDeviceInput?
-    /// いま向いている面。Web の facing と同じ言葉でサーバへ送る。
-    private(set) var position: AVCaptureDevice.Position = .back
 
     /// 実際に効いている手ぶれ補正。画面に出して確かめられるようにしている。
     private(set) var stabilizationLabel: String = "未設定"
@@ -63,8 +59,8 @@ final class CameraSession: NSObject {
                     self.session.startRunning()
                     // ★走らせてからでないと、効いている補正は分からない
                     self.confirmStabilization()
-                    // 既定の画角（広角）にそろえてから見せる
-                    self.resetZoomToDefault()
+                    // 広角（1倍）に合わせてから見せる
+                    self.lockToWideLens()
                     DispatchQueue.main.async { completion(.success(())) }
                 } catch {
                     DispatchQueue.main.async { completion(.failure(error)) }
@@ -100,13 +96,12 @@ final class CameraSession: NSObject {
         // 【要点 1】複合カメラを優先する。
         // 複合カメラは広角と超広角を束ねており、超広角側の余白を使った
         // シネマティック手ぶれ補正（cinematicExtended）が効きやすい。
-        guard let camera = Self.pickCamera(position) else { throw SetupError.noCamera }
+        guard let camera = Self.pickCamera() else { throw SetupError.noCamera }
         device = camera
 
         guard let input = try? AVCaptureDeviceInput(device: camera),
               session.canAddInput(input) else { throw SetupError.cannotAddInput }
         session.addInput(input)
-        videoInput = input
 
         // 音声。取れなくても映像だけで続ける（マイクの無い機種・シミュレータ対策）。
         if let mic = AVCaptureDevice.default(for: .audio),
@@ -128,7 +123,8 @@ final class CameraSession: NSObject {
 
     /// 使えるカメラを、手ぶれ補正と画質に効く順で選ぶ。
     /// Triple → DualWide → Wide。前 2 つが無い機種（SE など）でも最後で必ず拾える。
-    private static func pickCamera(_ position: AVCaptureDevice.Position) -> AVCaptureDevice? {
+    /// 背面のみ。前面には切り替えない。
+    private static func pickCamera() -> AVCaptureDevice? {
         let preferred: [AVCaptureDevice.DeviceType] = [
             .builtInTripleCamera,
             .builtInDualWideCamera,
@@ -138,103 +134,32 @@ final class CameraSession: NSObject {
         // こちらの優先順を守るには 1 つずつ引く。
         for type in preferred {
             let found = AVCaptureDevice.DiscoverySession(
-                deviceTypes: [type], mediaType: .video, position: position
+                deviceTypes: [type], mediaType: .video, position: .back
             ).devices.first
             if let found { return found }
         }
-        return AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position)
+        return AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
             ?? AVCaptureDevice.default(for: .video)
     }
 
-    // MARK: - 前と後ろの入れ替え
+    // MARK: - 画角
 
-    /// Web のカメラ画面と同じく、前後を切り替えられるようにする。
-    /// 入力を差し替えるだけなので、走らせたまま行う（止めると画が一度黒くなる）。
-    func flip(completion: @escaping () -> Void) {
-        queue.async { [weak self] in
-            guard let self else { return }
-            let next: AVCaptureDevice.Position = position == .back ? .front : .back
-            guard let camera = Self.pickCamera(next),
-                  let input = try? AVCaptureDeviceInput(device: camera) else {
-                DispatchQueue.main.async { completion() }
-                return
-            }
-            session.beginConfiguration()
-            if let old = videoInput { session.removeInput(old) }
-            if session.canAddInput(input) {
-                session.addInput(input)
-                videoInput = input
-                device = camera
-                position = next
-            } else if let old = videoInput {
-                session.addInput(old)   // 戻せないときは元へ
-            }
-            session.commitConfiguration()
-            // 入力が変われば形式も変わる。補正も画角も選び直しになる。
-            applyStabilization()
-            confirmStabilization()
-            resetZoomToDefault()
-            DispatchQueue.main.async { completion() }
-        }
-    }
-
-    /// サーバへ送る facing。Web 側と同じ言葉にそろえる。
-    var facing: String { position == .front ? "user" : "environment" }
-
-    // MARK: - ズーム
-
-    /// いまの倍率。画面の表示は「広角を 1×」とする世間の言い方に合わせるので、
-    /// ここでは端末そのままの値を返し、換算は zoomStops 側で持つ。
-    var zoomFactor: CGFloat { device?.videoZoomFactor ?? 1 }
-
-    /// 端末の最大倍率。デジタルズームで荒れるところまでは出さない。
-    var maxZoomFactor: CGFloat {
-        guard let device else { return 1 }
-        return min(device.activeFormat.videoMaxZoomFactor, 8)
-    }
-
-    /// 画面に出す倍率の目印。
-    /// 複合カメラはレンズの切り替わる点（0.5× や 2× に当たる）を持っているので、それを使う。
-    /// 単眼の機種には切り替わる点が無いので、1×・2× だけ出す。
-    var zoomStops: [CGFloat] {
-        guard let device else { return [1] }
-        let switchOvers = device.virtualDeviceSwitchOverVideoZoomFactors.map { CGFloat(truncating: $0) }
-        var stops: [CGFloat] = [1] + switchOvers
-        if stops.count == 1 { stops.append(min(2, maxZoomFactor)) }
-        return stops.filter { $0 <= maxZoomFactor }.sorted()
-    }
-
-    /// 目印に出す文字。超広角を含む機種では広角が 1× に見えるよう、切り替わる点で割る。
-    /// （複合カメラの倍率 1.0 は超広角なので、そのまま出すと 1× が広い画になって混乱する）
-    var zoomBase: CGFloat {
-        guard let device else { return 1 }
+    /// 広角（1倍）に固定する。
+    ///
+    /// ★カメラは選ばせない。毎日の記録を並べて見るものなので、
+    ///   日によって画角が変わらない方がよい。
+    /// ★複合カメラは倍率 1.0 が超広角なので、そのままだと 0.5倍で始まってしまう。
+    ///   レンズの切り替わる点を見て、広角の始まりへ合わせる。
+    func lockToWideLens() {
+        guard let device else { return }
         // 切り替わる点が 2 つ以上あるなら超広角つき。最初の点が広角の始まり。
         let switchOvers = device.virtualDeviceSwitchOverVideoZoomFactors.map { CGFloat(truncating: $0) }
-        return switchOvers.count >= 2 ? switchOvers[0] : 1
-    }
-
-    /// 既定の画角に合わせる。
-    ///
-    /// ★複合カメラは倍率 1.0 が超広角なので、そのままだと 0.5× で始まってしまう。
-    ///   端末の標準のカメラは広角（1×）で始まるので、こちらもそこへそろえる。
-    func resetZoomToDefault() {
-        guard let device else { return }
-        let want = max(1, min(zoomBase, maxZoomFactor))
+        let wide = switchOvers.count >= 2 ? switchOvers[0] : 1
+        let want = max(1, min(wide, device.activeFormat.videoMaxZoomFactor))
         do {
             try device.lockForConfiguration()
             defer { device.unlockForConfiguration() }
             device.videoZoomFactor = want
-        } catch { }
-    }
-
-    func setZoom(_ factor: CGFloat) {
-        guard let device else { return }
-        let clamped = max(1, min(factor, maxZoomFactor))
-        do {
-            try device.lockForConfiguration()
-            defer { device.unlockForConfiguration() }
-            // 目盛りを掴んで動かすので、飛ばずに追いつく速さで寄せる
-            device.ramp(toVideoZoomFactor: clamped, withRate: 8)
         } catch { }
     }
 

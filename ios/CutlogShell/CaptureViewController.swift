@@ -5,8 +5,11 @@ import UIKit
 ///
 /// 見た目は Web の撮影画面（web/index.html の #captureDialog）をなぞっている。
 /// 同じアプリの同じ操作なので、殻の中と外で当たりが変わらない方がよいためである。
-///   上： × ／ 記録先 ／ 前後の切り替え
-///   下： 倍率の目印 ／ まるいシャッター（外周が一周したら録り終わり） ／ 「動画」
+///   上： × ／ 記録先
+///   下： 手ぶれ補正 ／ まるいシャッター（外周が一周したら録り終わり） ／ 「動画」
+///
+/// ★カメラは選ばせない。背面の広角（1倍）に固定する。
+///   毎日の記録を並べて見るものなので、日によって画角が変わらない方がよい。
 ///
 /// 横向きで撮るのは、まとめ動画を横で作るためと、
 /// シネマティック手ぶれ補正が横構図を前提に効きやすいためである。
@@ -31,17 +34,14 @@ final class CaptureViewController: UIViewController {
     private let topBar = GradientView(direction: .down)
     private let closeButton = UIButton(type: .system)
     private let destLabel = UILabel()
-    private let flipButton = UIButton(type: .system)
 
     // 下
     private let bottomBar = GradientView(direction: .up)
-    private let zoomRow = UIStackView()
     private let shutter = ShutterButton()
     private let stabilizationLabel = UILabel()
     private let kindLabel = UILabel()
 
-    // 真ん中
-    private let hintLabel = PaddedLabel()
+    // 真ん中。★注意書きは出さない。撮る前の画面に文字を重ねると、いちばん邪魔になる。
     private let busyView = UIActivityIndicatorView(style: .large)
 
     private var recordingStartedAt: Date?
@@ -87,11 +87,8 @@ final class CaptureViewController: UIViewController {
                 // 画面より長生きして Web の上に取り残されてしまうためである。
                 location.start()
                 attachPreview()
-                buildZoomStops()
                 updateStabilizationLabel()
-                hintLabel.text = "横向きの範囲で記録されます"
                 shutter.isEnabled = true
-                flipButton.isEnabled = true
                 UIView.animate(withDuration: 0.2) { self.shutter.alpha = 1 }
             case .failure(let error):
                 complete(.failure(error.localizedDescription))
@@ -137,25 +134,13 @@ final class CaptureViewController: UIViewController {
         destLabel.text = request.logName.isEmpty ? "" : "記録先 \(request.logName)"
         destLabel.lineBreakMode = .byTruncatingTail
 
-        flipButton.setImage(
-            UIImage(systemName: "arrow.triangle.2.circlepath.camera", withConfiguration: Self.iconConfig),
-            for: .normal)
-        flipButton.tintColor = .white
-        flipButton.isEnabled = false
-        flipButton.addTarget(self, action: #selector(tapFlip), for: .touchUpInside)
-        flipButton.accessibilityLabel = "前と後ろを切り替える"
-
-        let top = UIStackView(arrangedSubviews: [closeButton, destLabel, UIView(), flipButton])
+        let top = UIStackView(arrangedSubviews: [closeButton, destLabel, UIView()])
         top.axis = .horizontal
         top.alignment = .center
         top.spacing = 10
         top.translatesAutoresizingMaskIntoConstraints = false
 
         // ── 下のバー ──────────────────────────────────
-        zoomRow.axis = .horizontal
-        zoomRow.spacing = 6
-        zoomRow.alignment = .center
-
         shutter.isEnabled = false
         shutter.alpha = 0.4
         shutter.addTarget(self, action: #selector(tapShutter), for: .touchUpInside)
@@ -187,27 +172,17 @@ final class CaptureViewController: UIViewController {
         row.alignment = .center
         row.distribution = .fill
 
-        let bottom = UIStackView(arrangedSubviews: [zoomRow, row])
+        let bottom = UIStackView(arrangedSubviews: [row])
         bottom.axis = .vertical
         bottom.alignment = .center
-        bottom.spacing = 10
         bottom.translatesAutoresizingMaskIntoConstraints = false
 
         // ── 真ん中 ────────────────────────────────────
-        hintLabel.textColor = .white
-        hintLabel.backgroundColor = UIColor.black.withAlphaComponent(0.5)
-        hintLabel.font = .systemFont(ofSize: 11)
-        hintLabel.textAlignment = .center
-        hintLabel.layer.cornerRadius = 12
-        hintLabel.clipsToBounds = true
-        hintLabel.text = "カメラを準備しています…"
-        hintLabel.translatesAutoresizingMaskIntoConstraints = false
-
         busyView.color = .white
         busyView.hidesWhenStopped = true
         busyView.translatesAutoresizingMaskIntoConstraints = false
 
-        [topBar, bottomBar, hintLabel, busyView].forEach(view.addSubview)
+        [topBar, bottomBar, busyView].forEach(view.addSubview)
         topBar.addSubview(top)
         bottomBar.addSubview(bottom)
 
@@ -225,8 +200,6 @@ final class CaptureViewController: UIViewController {
             top.topAnchor.constraint(equalTo: guide.topAnchor, constant: 8),
             closeButton.widthAnchor.constraint(equalToConstant: 44),
             closeButton.heightAnchor.constraint(equalToConstant: 44),
-            flipButton.widthAnchor.constraint(equalToConstant: 44),
-            flipButton.heightAnchor.constraint(equalToConstant: 44),
 
             bottomBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             bottomBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -246,43 +219,12 @@ final class CaptureViewController: UIViewController {
             kindLabel.trailingAnchor.constraint(equalTo: rightSlot.trailingAnchor),
             kindLabel.centerYAnchor.constraint(equalTo: rightSlot.centerYAnchor),
 
-            hintLabel.centerXAnchor.constraint(equalTo: guide.centerXAnchor),
-            hintLabel.centerYAnchor.constraint(equalTo: guide.centerYAnchor),
-            hintLabel.heightAnchor.constraint(equalToConstant: 24),
-
             busyView.centerXAnchor.constraint(equalTo: guide.centerXAnchor),
             busyView.centerYAnchor.constraint(equalTo: guide.centerYAnchor),
         ])
     }
 
     private static let iconConfig = UIImage.SymbolConfiguration(pointSize: 17, weight: .medium)
-
-    /// 倍率の目印。Web の .zoom-stops と同じく、押すとその倍率に飛ぶ粒を並べる。
-    private func buildZoomStops() {
-        zoomRow.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        let stops = camera.zoomStops
-        guard stops.count > 1 else { return }
-        let base = camera.zoomBase
-        for stop in stops {
-            let shown = stop / base
-            let button = ZoomStopButton()
-            // 0.5× のように小数が要るものだけ小数で出す
-            button.setTitle(shown < 1 || shown != shown.rounded()
-                            ? String(format: "%.1f×", shown) : String(format: "%.0f×", shown),
-                            for: .normal)
-            button.factor = stop
-            button.addTarget(self, action: #selector(tapZoomStop(_:)), for: .touchUpInside)
-            zoomRow.addArrangedSubview(button)
-        }
-        markActiveZoom()
-    }
-
-    private func markActiveZoom() {
-        let now = camera.zoomFactor
-        for case let b as ZoomStopButton in zoomRow.arrangedSubviews {
-            b.isOn = abs(b.factor - now) < 0.05
-        }
-    }
 
     private func attachPreview() {
         let layer = AVCaptureVideoPreviewLayer(session: camera.session)
@@ -332,28 +274,10 @@ final class CaptureViewController: UIViewController {
         complete(.cancelled)
     }
 
-    @objc private func tapFlip() {
-        guard !camera.isRecording else { return }
-        flipButton.isEnabled = false
-        camera.flip { [weak self] in
-            guard let self else { return }
-            flipButton.isEnabled = true
-            buildZoomStops()
-            updateStabilizationLabel()
-        }
-    }
-
-    @objc private func tapZoomStop(_ sender: ZoomStopButton) {
-        camera.setZoom(sender.factor)
-        markActiveZoom()
-    }
-
     @objc private func tapShutter() {
         guard !camera.isRecording else { return }
         shutter.isEnabled = false
         closeButton.isHidden = true
-        flipButton.isHidden = true
-        hintLabel.isHidden = true
         recordingStartedAt = Date()
         // 外周が request.seconds かけて一周する。残り時間はこれで分かるので、数字は出さない。
         shutter.startRecording(seconds: request.seconds)
@@ -375,8 +299,6 @@ final class CaptureViewController: UIViewController {
     // MARK: - アップロード
 
     private func upload(_ fileURL: URL) {
-        hintLabel.isHidden = false
-        hintLabel.text = "送信中…"
         busyView.startAnimating()
         shutter.isHidden = true
 
@@ -386,7 +308,8 @@ final class CaptureViewController: UIViewController {
             durationMs: durationMs,
             takenAt: recordingStartedAt ?? Date(),
             tzOffset: request.tzOffset,
-            facing: camera.facing,
+            // 背面の広角に固定しているので、Web 側と同じ言い方で environment とする
+            facing: "environment",
             place: location.place
         )
 
@@ -528,35 +451,6 @@ private final class ShutterButton: UIButton {
     }
 }
 
-/// Web の .zoom-stop と同じ、丸い小さな倍率の粒。
-private final class ZoomStopButton: UIButton {
-    var factor: CGFloat = 1
-    var isOn = false {
-        didSet {
-            backgroundColor = isOn ? .white : UIColor.black.withAlphaComponent(0.5)
-            setTitleColor(isOn ? .black : .white, for: .normal)
-        }
-    }
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        titleLabel?.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
-        layer.cornerRadius = 14
-        clipsToBounds = true
-        isOn = false
-        // 字の左右の余白は、幅の下限で作る。
-        // contentEdgeInsets は iOS 15 で非推奨になっており、
-        // UIButton.Configuration を使う場合は無視される。
-        NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 28),
-            widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
-        ])
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError("not used") }
-}
-
 /// 上下の帯。Web と同じ、黒からの薄いぼかし。
 /// 明るい景色を撮っているときでも、白い字とアイコンが読めるようにするためのもの。
 private final class GradientView: UIView {
@@ -578,18 +472,4 @@ private final class GradientView: UIView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
-}
-
-/// 左右に余白のある丸い注意書き。Web の .cam-hint に当たる。
-private final class PaddedLabel: UILabel {
-    private let inset = UIEdgeInsets(top: 0, left: 14, bottom: 0, right: 14)
-
-    override func drawText(in rect: CGRect) {
-        super.drawText(in: rect.inset(by: inset))
-    }
-
-    override var intrinsicContentSize: CGSize {
-        let s = super.intrinsicContentSize
-        return CGSize(width: s.width + inset.left + inset.right, height: s.height)
-    }
 }

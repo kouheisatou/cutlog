@@ -15,10 +15,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import android.view.Gravity
 import android.view.View
-import android.widget.LinearLayout
-import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.camera2.interop.Camera2CameraInfo
@@ -62,8 +59,6 @@ class CaptureActivity : AppCompatActivity() {
     private var outputFile: File? = null
     private var startedAt: Instant? = null
 
-    /** いま向いている面。Web の facing と同じ言葉でサーバへ送る。 */
-    private var lensFacing = CameraSelector.LENS_FACING_BACK
     private var camera: Camera? = null
 
     /** 位置は「取れていれば付ける」だけの添え物。撮影の流れは止めない。 */
@@ -102,12 +97,9 @@ class CaptureActivity : AppCompatActivity() {
 
         binding.destText.text =
             if (request.logName.isBlank()) "" else "記録先 ${request.logName}"
-        binding.hintText.setText(R.string.capture_preparing)
         binding.shutter.isEnabled = false
-        binding.flipButton.isEnabled = false
         binding.shutter.setOnClickListener { startRecording() }
         binding.closeButton.setOnClickListener { finishWithError("撮影を取りやめました") }
-        binding.flipButton.setOnClickListener { flipCamera() }
         applyBarInsets()
 
         // 位置は任意なので、必須の 2 つと一緒に頼んで、断られてもそのまま進む。
@@ -162,7 +154,9 @@ class CaptureActivity : AppCompatActivity() {
             val provider = runCatching { future.get() }.getOrNull()
                 ?: return@addListener finishWithError("カメラを開けませんでした")
 
-            val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
+            // ★カメラは選ばせない。背面の広角（1倍）に固定する。
+            //   毎日の記録を並べて見るものなので、日によって画角が変わらない方がよい。
+            val selector = CameraSelector.DEFAULT_BACK_CAMERA
             // 端末が手ぶれ補正に対応しているかは、束ねる前に CameraInfo から見ておく。
             // 非対応の端末で有効にすると bind 時に落ちるため。
             val info = runCatching { selector.filter(provider.availableCameraInfos).firstOrNull() }
@@ -207,75 +201,21 @@ class CaptureActivity : AppCompatActivity() {
             camera = bound
             videoCapture = capture
             binding.shutter.isEnabled = true
-            binding.flipButton.isEnabled = hasBothLenses(provider)
             // 端末の補正を使うことがこのアプリの目的なので、効いているかを画面に出す。
             binding.stabilizationText.text =
                 "手ぶれ補正\n" + if (videoStabilization) "あり" else "この端末では使えない"
-            binding.hintText.setText(R.string.capture_hint_landscape)
-            buildZoomStops(bound)
+            lockToWideLens(bound)
         }, ContextCompat.getMainExecutor(this))
     }
 
-    /** 前と後ろの両方があるときだけ、切り替えのボタンを効かせる。 */
-    private fun hasBothLenses(provider: ProcessCameraProvider): Boolean = runCatching {
-        provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) &&
-            provider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA)
-    }.getOrDefault(false)
-
-    /** Web のカメラ画面と同じく、前後を切り替えられるようにする。 */
-    private fun flipCamera() {
-        if (recording != null) return
-        lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
-            CameraSelector.LENS_FACING_FRONT
-        } else {
-            CameraSelector.LENS_FACING_BACK
-        }
-        binding.shutter.isEnabled = false
-        binding.flipButton.isEnabled = false
-        startCamera()
-    }
-
     /**
-     * 倍率の目印。Web の .zoom-stops と同じく、押すとその倍率に飛ぶ粒を並べる。
-     * 端末が出せる範囲の中から、切りのいいところだけを拾う。
+     * 広角（1倍）に固定する。
+     * 端末によっては始まりが 0.5倍や中途半端な倍率になっているので、そこへ合わせ直す。
      */
-    private fun buildZoomStops(bound: Camera) {
-        binding.zoomRow.removeAllViews()
+    private fun lockToWideLens(bound: Camera) {
         val state = bound.cameraInfo.zoomState.value ?: return
-        val stops = listOf(0.5f, 1f, 2f, 3f, 5f)
-            .filter { it >= state.minZoomRatio && it <= state.maxZoomRatio }
-        if (stops.size < 2) return
-        // ★既定の画角（等倍）に合わせてから見せる。
-        //   端末によっては始まりが 0.5× や中途半端な倍率になっていて、
-        //   どれも選ばれていない見た目になってしまう。
-        val base = if (stops.contains(1f)) 1f else stops.first()
-        bound.cameraControl.setZoomRatio(base)
-        val density = resources.displayMetrics.density
-        for (stop in stops) {
-            val button = TextView(this).apply {
-                text = if (stop < 1f) "%.1f×".format(stop) else "%.0f×".format(stop)
-                textSize = 11f
-                gravity = Gravity.CENTER
-                setBackgroundResource(R.drawable.zoom_stop_bg)
-                setTextColor(ContextCompat.getColorStateList(context, R.color.zoom_stop_text))
-                minWidth = (40 * density).toInt()
-                setPadding((8 * density).toInt(), (5 * density).toInt(),
-                    (8 * density).toInt(), (5 * density).toInt())
-                isSelected = stop == base
-                setOnClickListener {
-                    camera?.cameraControl?.setZoomRatio(stop)
-                    for (i in 0 until binding.zoomRow.childCount) {
-                        binding.zoomRow.getChildAt(i).isSelected = false
-                    }
-                    isSelected = true
-                }
-            }
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                (28 * density).toInt(),
-            ).apply { marginEnd = (6 * density).toInt() }
-            binding.zoomRow.addView(button, lp)
-        }
+        val want = 1f.coerceIn(state.minZoomRatio, state.maxZoomRatio)
+        bound.cameraControl.setZoomRatio(want)
     }
 
     /**
@@ -318,8 +258,6 @@ class CaptureActivity : AppCompatActivity() {
         outputFile = file
         binding.shutter.isEnabled = false
         binding.closeButton.visibility = View.GONE
-        binding.flipButton.visibility = View.GONE
-        binding.hintText.visibility = View.GONE
 
         recording = capture.output
             .prepareRecording(this, FileOutputOptions.Builder(file).build())
@@ -343,8 +281,6 @@ class CaptureActivity : AppCompatActivity() {
                         } else {
                             val ms = event.recordingStats.recordedDurationNanos / 1_000_000
                             binding.shutter.visibility = View.GONE
-                            binding.hintText.visibility = View.VISIBLE
-                            binding.hintText.setText(R.string.capture_sending)
                             binding.busy.visibility = View.VISIBLE
                             upload(file, ms)
                         }
@@ -368,11 +304,8 @@ class CaptureActivity : AppCompatActivity() {
             put("durationMs", durationMs)
             put("takenAt", DateTimeFormatter.ISO_INSTANT.format(startedAt ?: Instant.now()))
             put("tzOffset", request.tzOffset)
-            // Web 側と同じ言い方に揃える（'environment' / 'user'）
-            put(
-                "facing",
-                if (lensFacing == CameraSelector.LENS_FACING_FRONT) "user" else "environment",
-            )
+            // 背面の広角に固定しているので、Web 側と同じ言い方で environment とする
+            put("facing", "environment")
             put("source", "camera")
             lastLocation?.let {
                 put("lat", it.latitude)
