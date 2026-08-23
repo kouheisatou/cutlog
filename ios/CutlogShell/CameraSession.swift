@@ -93,9 +93,7 @@ final class CameraSession: NSObject {
             session.sessionPreset = .high
         }
 
-        // 【要点 1】複合カメラを優先する。
-        // 複合カメラは広角と超広角を束ねており、超広角側の余白を使った
-        // シネマティック手ぶれ補正（cinematicExtended）が効きやすい。
+        // 【要点 1】広角そのもの（1倍のレンズ）を直に選ぶ。理由は pickCamera を参照。
         guard let camera = Self.pickCamera() else { throw SetupError.noCamera }
         device = camera
 
@@ -121,47 +119,45 @@ final class CameraSession: NSObject {
         applyStabilization()
     }
 
-    /// 使えるカメラを、手ぶれ補正と画質に効く順で選ぶ。
-    /// Triple → DualWide → Wide。前 2 つが無い機種（SE など）でも最後で必ず拾える。
-    /// 背面のみ。前面には切り替えない。
+    /// 背面の広角（1倍のレンズ）を選ぶ。前面には切り替えない。
+    ///
+    /// ★複合カメラ（Triple / DualWide）は使わない。
+    ///   複合カメラの videoZoomFactor は「いちばん広いレンズ」を 1.0 とする決まりで、
+    ///   超広角を含む機種では 1.0 が 0.5倍にあたる。1倍にするには
+    ///   virtualDeviceSwitchOverVideoZoomFactors の最初の値（レンズが切り替わる点）を
+    ///   入れ直す必要があり、機種ごとの並びに寄りかかることになる。
+    ///   レンズを切り替えないと決めた以上、複合である利点は無いので、
+    ///   広角そのものを直に選ぶ。この機器の 1.0 は、定義からして 1倍である。
     private static func pickCamera() -> AVCaptureDevice? {
-        let preferred: [AVCaptureDevice.DeviceType] = [
-            .builtInTripleCamera,
-            .builtInDualWideCamera,
-            .builtInWideAngleCamera,
-        ]
-        // DiscoverySession に複数の型を渡すと「機種にある順」で返ってくるため、
-        // こちらの優先順を守るには 1 つずつ引く。
-        for type in preferred {
-            let found = AVCaptureDevice.DiscoverySession(
-                deviceTypes: [type], mediaType: .video, position: .back
-            ).devices.first
-            if let found { return found }
-        }
-        return AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+        AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.builtInWideAngleCamera], mediaType: .video, position: .back
+        ).devices.first
+            ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
             ?? AVCaptureDevice.default(for: .video)
     }
 
     // MARK: - 画角
 
-    /// 広角（1倍）に固定する。
+    /// 1倍のレンズに合わせる。
     ///
     /// ★カメラは選ばせない。毎日の記録を並べて見るものなので、
     ///   日によって画角が変わらない方がよい。
-    /// ★複合カメラは倍率 1.0 が超広角なので、そのままだと 0.5倍で始まってしまう。
-    ///   レンズの切り替わる点を見て、広角の始まりへ合わせる。
+    /// 広角そのものを選んでいるので、ふつうは 1.0 のままでよい。
+    /// 万一 複合カメラを掴んでいた場合に備えて、そのときだけ
+    /// レンズの切り替わる点（＝広角の始まり）へ入れ直す。
     func lockToWideLens() {
         guard let device else { return }
-        // 切り替わる点が 2 つ以上あるなら超広角つき。最初の点が広角の始まり。
         let switchOvers = device.virtualDeviceSwitchOverVideoZoomFactors.map { CGFloat(truncating: $0) }
-        let wide = switchOvers.count >= 2 ? switchOvers[0] : 1
-        let want = max(1, min(wide, device.activeFormat.videoMaxZoomFactor))
+        let want = switchOvers.first ?? 1
         do {
             try device.lockForConfiguration()
             defer { device.unlockForConfiguration() }
-            device.videoZoomFactor = want
+            device.videoZoomFactor = max(1, min(want, device.activeFormat.videoMaxZoomFactor))
         } catch { }
     }
+
+    /// いまの水平画角（度）。1倍のレンズが選べているかを確かめるための手がかり。
+    var fieldOfView: Float { device?.activeFormat.videoFieldOfView ?? 0 }
 
     // MARK: - 手ぶれ補正（このアプリの主目的）
     //

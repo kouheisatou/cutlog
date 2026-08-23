@@ -228,7 +228,11 @@ final class CaptureViewController: UIViewController {
 
     private func attachPreview() {
         let layer = AVCaptureVideoPreviewLayer(session: camera.session)
-        layer.videoGravity = .resizeAspectFill
+        // ★画面いっぱいに広げない（resizeAspectFill にしない）。
+        //   記録するのは 16:9 で、端末の画面はもっと縦長なので、
+        //   いっぱいに広げると上下が切られ、写るはずのところが見えないまま撮ることになる。
+        //   実際より狭く見えるのもこれが理由。見えている通りに記録されるようにする。
+        layer.videoGravity = .resizeAspect
         layer.frame = view.bounds
         view.layer.insertSublayer(layer, at: 0)
         previewLayer = layer

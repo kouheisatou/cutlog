@@ -11,16 +11,22 @@
   端末のバーの逃げは CaptureActivity から padding で入れる（切り欠きの寸法は端末ごとに違うため）。
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/captureRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
 
+    <!-- ★画面いっぱいに広げない（fitCenter）。
+         記録するのは 16:9 で、端末の画面はもっと縦長なので、
+         いっぱいに広げると上下が切られ、写るはずのところが見えないまま撮ることになる。
+         見えている通りに記録されるようにする。 -->
     <androidx.camera.view.PreviewView
         android:id="@+id/preview"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        app:scaleType="fitCenter" />
 
     <!-- ── 上 ────────────────────────────────────────── -->
     <LinearLayout
