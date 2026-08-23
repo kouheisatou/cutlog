@@ -10,7 +10,7 @@
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
 <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
 <link rel="stylesheet" href="/vendor/leaflet/MarkerCluster.css" />
-<link rel="stylesheet" href="/styles.css?v=0.20.0" />
+<link rel="stylesheet" href="/styles.css?v=0.21.2" />
 </head>
 <body>
 <svg class="sprite" aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute">
@@ -205,6 +205,16 @@
         <button id="allFilterClear" class="mini">解除</button>
       </div>
       <div id="allBody" class="list-body"></div>
+      <!-- 長押しで選んだときだけ出る操作の帯 -->
+      <div id="allActionBar" class="action-bar" hidden>
+        <span class="tc" id="allSelCount">0件</span>
+        <button id="allSelAll" class="mini">すべて選択</button>
+        <div class="spacer"></div>
+        <button id="allSelExport" class="mini"><svg class="ic sm"><use href="#ic-download"/></svg>書き出し</button>
+        <button id="allSelMove" class="mini"><svg class="ic sm"><use href="#ic-move"/></svg>移動</button>
+        <button id="allSelDelete" class="mini danger"><svg class="ic sm"><use href="#ic-trash"/></svg>削除</button>
+        <button id="allSelCancel" class="mini">やめる</button>
+      </div>
     </aside>
   </main>
 </div>
@@ -242,7 +252,7 @@
       <video id="preview" playsinline muted autoplay></video>
       <canvas id="snapCanvas" hidden></canvas>
       <video id="playback" playsinline controls hidden></video>
-      <div class="cam-hint" id="camHint">横向きにすると画面いっぱいで撮れます</div>
+      <div class="cam-hint" id="camHint">端末を横に倒してください</div>
     </div>
 
     <div class="capture-top">
@@ -614,6 +624,6 @@
 <!-- 地図は Leaflet に任せる。同梱してあるので外へは取りに行かない。 -->
 <script src="/vendor/leaflet/leaflet.js"></script>
 <script src="/vendor/leaflet/leaflet.markercluster.js"></script>
-<script type="module" src="/app.js?v=0.20.0"></script>
+<script type="module" src="/app.js?v=0.21.2"></script>
 </body>
 </html>

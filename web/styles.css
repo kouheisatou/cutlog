@@ -1004,8 +1004,23 @@ dialog.sheet.in .panel { transform: none; }
 /* 撮影はシートではなく、画面いっぱいのまま */
 /* 撮影は画面いっぱい。シートのようにせり上がらせない。 */
 dialog.sheet.cam { align-items: stretch; justify-content: center; }
-dialog.sheet.cam .capture { border-radius: 0; transform: none; }
+dialog.sheet.cam .capture { border-radius: 0; }
 dialog.sheet.cam .panel { border-radius: 0; }
+
+/* ★撮るのは横。画面が縦のままでも、撮影の画面だけは横向きで出す。
+   端末を横に倒せば、そのまま正しい向きになる。
+   （画面の向きを固定する仕組みは iPhone では効かないので、こちらで倒す） */
+@media (orientation: portrait) {
+  dialog.sheet.cam .capture {
+    position: fixed;
+    top: 50%; left: 50%;
+    width: 100dvh;                 /* 縦横を入れ替える */
+    height: 100vw;
+    /* 端末を時計回りに倒すと、そのまま正しい向きになる向きで置く */
+    transform: translate(-50%, -50%) rotate(-90deg);
+    transform-origin: center center;
+  }
+}
 
 /* 詳細のシートは、広い画面では少しゆとりを持たせる */
 .wide-panel { width: min(720px, 100%); }
@@ -1019,3 +1034,30 @@ dialog.sheet.cam .panel { border-radius: 0; }
   color: #fff; opacity: .7; font-family: var(--mono); font-size: 9px;
   letter-spacing: .06em; white-space: nowrap; flex: none;
 }
+
+/* ── まとめて選ぶ（長押しから） ─────────────────────── */
+.photo-cell .tick {
+  position: absolute; top: 6px; right: 6px; width: 20px; height: 20px;
+  border-radius: 50%; border: 2px solid rgba(255,255,255,.85);
+  background: rgba(0,0,0,.3); display: none;
+}
+.photo-grid.picking .photo-cell .tick { display: block; }
+.photo-cell.picked .tick { background: var(--sel); border-color: var(--paper); }
+.photo-cell.picked .tick::after {
+  content: ''; position: absolute; left: 5px; top: 2px;
+  width: 5px; height: 10px; border: solid var(--sel-ink);
+  border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+.photo-cell.picked img { opacity: .7; }
+.photo-cell.picked { outline: 3px solid var(--sel); outline-offset: -3px; }
+
+/* 選んでいるときだけ出る操作の帯（下のタブのすぐ上） */
+.action-bar {
+  position: sticky; bottom: 0; z-index: 5;
+  display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap;
+  padding: var(--s2) var(--s4) calc(var(--s2) + 64px + env(safe-area-inset-bottom));
+  background: linear-gradient(to top, var(--paper) 70%, transparent);
+  border-top: 1px solid var(--hair);
+}
+.action-bar .tc { font-family: var(--mono); font-size: 11px; color: var(--mute); }
+.mini.danger { color: #c0392b; }

@@ -20,6 +20,8 @@ const state = {
   // 全カット（ログをまたいだ一覧）
   allCuts: [],
   allAuthors: [],       // 検索でえらべる、上げた人の顔ぶれ
+  picking: false,       // カット一覧で、まとめて選んでいる最中か
+  picked: new Set(),    // そこで選ばれているカット
   cameras: [],          // この端末で使えるレンズ
   cameraId: null,       // いま使っているレンズ
   lensChosen: false,    // いちばん良いレンズへ乗り換え済みか
@@ -677,6 +679,78 @@ function renderMapList() {
     wrap.appendChild(cell);
   }
   body.appendChild(wrap);
+}
+
+
+// ── 長押しでまとめて選ぶ ────────────────────────────────
+// ふだんは押せば開く。長く押すと選ぶ状態に入り、そこからは押すたびに選び外しになる。
+const LONG_PRESS_MS = 450;
+
+function wireCellPick(cell, cut, timeLabel) {
+  let timer = null;
+  let moved = false;
+  const start = () => {
+    moved = false;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      if (moved) return;
+      if (!state.picking) state.picking = true;
+      state.picked.add(cut.id);
+      if (navigator.vibrate) navigator.vibrate(12);   // 選べたことを指に返す
+      renderAll();
+    }, LONG_PRESS_MS);
+  };
+  const cancel = () => { clearTimeout(timer); timer = null; };
+  cell.addEventListener('pointerdown', start);
+  cell.addEventListener('pointermove', () => { moved = true; cancel(); });
+  cell.addEventListener('pointerup', cancel);
+  cell.addEventListener('pointercancel', cancel);
+  cell.addEventListener('pointerleave', cancel);
+  // 長押しの途中で出る「文字を選ぶ」ふるまいを止める
+  cell.addEventListener('contextmenu', (ev) => ev.preventDefault());
+
+  pressable(cell, state.picking
+    ? `${timeLabel} を選ぶ`
+    : `${escapeHtml(cut.logName || '')} ${timeLabel} のカットを開く`, () => {
+    if (state.picking) {
+      if (state.picked.has(cut.id)) state.picked.delete(cut.id);
+      else state.picked.add(cut.id);
+      if (!state.picked.size) state.picking = false;
+      renderAll();
+      return;
+    }
+    openDetail(cut.id, 'all');
+  });
+}
+
+function paintActionBar() {
+  const bar = $('#allActionBar');
+  bar.hidden = !state.picking;
+  $('#allSelCount').textContent = `${state.picked.size}件`;
+}
+
+function endPicking() {
+  state.picking = false;
+  state.picked.clear();
+  renderAll();
+}
+
+async function deletePicked() {
+  const ids = [...state.picked];
+  if (!ids.length) return;
+  if (!confirm(`${ids.length}件のカットを削除しますか。ゴミ箱から戻せます。`)) return;
+  let done = 0;
+  for (const id of ids) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await api(`/cuts/${id}`, { method: 'DELETE' });
+      done += 1;
+    } catch (err) { toast(err.message, 4000); }
+  }
+  toast(`${done}件を削除しました`);
+  endPicking();
+  await refreshAfterChange();
 }
 
 // ── マップ ──────────────────────────────────────────────
@@ -1362,10 +1436,23 @@ function paintCamHint() {
   $('#camHint').hidden = !portrait;
 }
 
+// 画面の向きを固定できる端末では、そうしておく（Androidなど）。
+// iPhoneは受け付けないので、そのときは見た目を倒すやり方に任せる。
+async function lockLandscape() {
+  try {
+    await screen.orientation?.lock?.('landscape');
+  } catch { /* 受け付けない端末では何もしない */ }
+}
+
+function unlockOrientation() {
+  try { screen.orientation?.unlock?.(); } catch { /* 同上 */ }
+}
+
 async function openCapture() {
   const dlg = $('#captureDialog');
   dlg.showModal();
   paintCamHint();
+  lockLandscape();
   askPlace();
   $('#capTimer').textContent = `${state.log?.cut_seconds || 2}秒`;
   state.captureLogId = state.logId;
@@ -1619,6 +1706,7 @@ function paintZoom() {
 
 function closeCapture() {
   stopStream();
+  unlockOrientation();
   pending = null;
   $('#reviewBar').hidden = true;
   $('#playback').hidden = true;
@@ -2225,6 +2313,7 @@ function paintAllFilter() {
 
 function renderAll() {
   paintAllFilter();
+  paintActionBar();
   const body = $('#allBody');
   body.innerHTML = '';
   const shown = state.allCuts;
@@ -2246,15 +2335,17 @@ function renderAll() {
       + `<span class="muted">${String(cuts.length).padStart(2, '0')} cuts</span>`;
     body.appendChild(head);
     const wrap = document.createElement('div');
-    wrap.className = 'photo-grid';
+    wrap.className = `photo-grid${state.picking ? ' picking' : ''}`;
     for (const c of cuts) {
       const cell = document.createElement('div');
-      cell.className = 'photo-cell';
+      cell.className = `photo-cell${state.picked.has(c.id) ? ' picked' : ''}`;
+      cell.dataset.id = c.id;
       const timeLabel = fmtTime(c.takenAt, c.tzOffset);
       cell.innerHTML = `
         ${c.thumbUrl ? `<img loading="lazy" src="${c.thumbUrl}" alt="" />` : '<span class="ph"></span>'}
-        <span class="cap"><span class="t">${timeLabel}</span><span class="lg">${escapeHtml(c.logName || '')}</span></span>`;
-      pressable(cell, `${escapeHtml(c.logName || '')} ${timeLabel} のカットを開く`, () => openDetail(c.id, 'all'));
+        <span class="cap"><span class="t">${timeLabel}</span><span class="lg">${escapeHtml(c.logName || '')}</span></span>
+        <span class="tick" aria-hidden="true"></span>`;
+      wireCellPick(cell, c, timeLabel);
       wrap.appendChild(cell);
     }
     body.appendChild(wrap);
@@ -2539,6 +2630,19 @@ $('#avatarClear').addEventListener('click', async () => {
   state.user = user;
   paintMyAvatar();
   toast('アイコン画像を削除しました');
+});
+$('#allSelCancel').addEventListener('click', endPicking);
+$('#allSelAll').addEventListener('click', () => {
+  state.allCuts.forEach((c) => state.picked.add(c.id));
+  renderAll();
+});
+$('#allSelDelete').addEventListener('click', deletePicked);
+$('#allSelExport').addEventListener('click', () => openPicker('export', [...state.picked]));
+$('#allSelMove').addEventListener('click', () => {
+  const ids = [...state.picked];
+  if (!ids.length) return;
+  const from = state.allCuts.find((c) => c.id === ids[0])?.logId;
+  openMove(ids, from);
 });
 $('#allSearchBtn').addEventListener('click', () => {
   fillAuthorOptions();
