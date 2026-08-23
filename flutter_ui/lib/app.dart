@@ -8,6 +8,7 @@ import 'data/api.dart';
 import 'data/models.dart';
 import 'design/text.dart';
 import 'design/tokens.dart';
+import 'screens/all_screen.dart';
 import 'screens/auth_screen.dart';
 import 'screens/logs_screen.dart';
 import 'screens/settings_screen.dart';
@@ -58,6 +59,7 @@ class _Host extends StatefulWidget {
 class _HostState extends State<_Host> {
   final Api _api = Api();
   List<LogItem>? _logs;
+  List<Cut> _cuts = <Cut>[];
   Me? _me;
   Map<String, dynamic> _config = <String, dynamic>{};
   String? _error;
@@ -76,13 +78,14 @@ class _HostState extends State<_Host> {
     }
     try {
       final List<Object?> got = await Future.wait(<Future<Object?>>[
-        _api.logs(), _api.me(), _api.config(),
+        _api.logs(), _api.me(), _api.config(), _api.allCuts(),
       ]);
       if (!mounted) return;
       setState(() {
         _logs = got[0]! as List<LogItem>;
         _me = got[1] as Me?;
         _config = got[2]! as Map<String, dynamic>;
+        _cuts = got[3]! as List<Cut>;
       });
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
@@ -114,6 +117,11 @@ class _HostState extends State<_Host> {
             me: _me ?? Me(id: '', username: '', displayName: ''),
             pushHint: _pushHint,
           ),
+        );
+      case 'all':
+        return Screen(
+          tab: 'all',
+          child: AllScreen(cuts: _cuts, mediaUrl: _api.mediaUrl),
         );
       case 'logs':
         return Screen(
