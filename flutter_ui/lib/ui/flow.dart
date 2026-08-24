@@ -21,6 +21,10 @@ class CssColumn extends StatelessWidget {
 
   final List<Block> blocks;
   final CrossAxisAlignment crossAxisAlignment;
+  /// 端（先頭と末尾）の余白を出すか。
+  /// ★ CSS の余白は、包む側に padding があると外へ抜けない。札（.panel）は
+  ///   16px の padding を持つので、末尾の余白はそのまま残る。抜いてしまうと
+  ///   札の丈が 16px 足りなくなる。
   final bool outer;
 
   @override

@@ -99,8 +99,9 @@ class _MapScreenState extends State<MapScreen> {
               ),
             ),
           // Leaflet の .leaflet-control-zoom — 左上に寄せた 30px の四角を2つ
+          // ★ 端末では時計や電池の帯が上に重なる。その分だけ下げる。
           Positioned(
-            top: 10,
+            top: 10 + MediaQuery.paddingOf(context).top,
             left: 10,
             child: Column(
               mainAxisSize: MainAxisSize.min,

@@ -468,7 +468,7 @@ class _HostState extends State<_Host> {
                     top: sp.s1,
                     bottom: sp.s1,
                   ),
-            ], outer: false);
+            ], outer: true);
           },
         ),
       ],

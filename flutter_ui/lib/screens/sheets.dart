@@ -50,7 +50,7 @@ Future<void> openLogAddSheet(
               ),
               TextBtn('参加', onTap: () => say(context, () => onJoin(code.text.trim()))),
             ]), top: sp.s2, bottom: sp.s2),
-          ], outer: false);
+          ], outer: true);
         },
       ),
     ],
@@ -85,7 +85,7 @@ Future<void> openLogSearchSheet(
                 Navigator.of(context).pop();
               }),
             ]), top: sp.s5),
-          ], outer: false);
+          ], outer: true);
         },
       ),
     ],
@@ -118,7 +118,7 @@ Future<String?> openChoiceSheet(
                 top: sp.s1,
                 bottom: sp.s1,
               ),
-          ], outer: false);
+          ], outer: true);
         },
       ),
     ],
@@ -226,7 +226,7 @@ Future<void> openSearchSheet(
                 Navigator.of(context).pop();
               }),
             ]), top: sp.s5),
-          ], outer: false);
+          ], outer: true);
         },
       ),
     ],
@@ -265,7 +265,7 @@ Future<void> openMoveSheet(
                   top: 0,
                   bottom: 0,
                 ),
-          ], outer: false);
+          ], outer: true);
         },
       ),
     ],
@@ -620,8 +620,6 @@ class _CutBodyState extends State<_CutBody> {
 
         // コメント
         Block(const SheetHead('コメント'), top: sp.s5, bottom: sp.s2),
-        if (_detail != null && _detail!.comments.isEmpty)
-          Block(Text('まだコメントはありません。', style: t.small), top: 0, bottom: sp.s2),
         for (final Comment cm in _detail?.comments ?? <Comment>[])
           Block(
             // CSS: .comment — 顔と一緒に出す
@@ -676,7 +674,8 @@ class _CutBodyState extends State<_CutBody> {
               _run(() => widget.onComment(text));
             },
           ),
-          PrimaryBtn('送信', onTap: () {
+          // CSS: .btn（primary ではない）— 送信は塗らず、下線だけ
+          TextBtn('送信', onTap: () {
             final String text = _comment.text.trim();
             if (text.isEmpty) return;
             _comment.clear();
@@ -907,7 +906,7 @@ Future<void> openSharesSheet(
                   top: sp.s1,
                   bottom: sp.s1,
                 ),
-          ], outer: false);
+          ], outer: true);
         },
       ),
     ],
@@ -1028,7 +1027,7 @@ Future<Map<String, dynamic>?> openRenderSheet(
               TextBtn('やめる', onTap: () => Navigator.of(context).pop()),
               PrimaryBtn('この見た目で作る', onTap: () => Navigator.of(context).pop(draft)),
             ]), top: sp.s5),
-          ], outer: false);
+          ], outer: true);
         },
       ),
     ],
