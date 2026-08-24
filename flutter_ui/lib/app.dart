@@ -362,6 +362,17 @@ class _HostState extends State<_Host> {
     );
   }
 
+  /// その日の中身を取り直す
+  Future<void> _reloadDay() async {
+    if (_log == null || _day == null) {
+      await _reload();
+      return;
+    }
+    final List<Cut> got = await _api.cutsOfLog(_log!.id, date: _day!);
+    if (!mounted) return;
+    setState(() => _dayCuts = got..sort((Cut a, Cut b) => a.takenAt.compareTo(b.takenAt)));
+  }
+
   /// まとめて消す。
   /// ★ 1件ずつ送り、失敗した分だけを知らせて残りは続ける。
   ///   途中で止めると「どこまで消えたか」が分からなくなる。
@@ -586,11 +597,25 @@ class _HostState extends State<_Host> {
         return Screen(
           tab: 'logs',
           onTab: _selectTab,
-          child: DayScreen(
-            date: _day ?? _newestDay,
-            cuts: day,
-            media: _media,
-            onBack: () => setState(() => _stack = 'log'),
+          child: Builder(
+            builder: (BuildContext context) => DayScreen(
+              date: _day ?? _newestDay,
+              cuts: day,
+              media: _media,
+              cutSeconds: (_log ?? _target).cutSeconds,
+              onBack: () => setState(() => _stack = 'log'),
+              onToggleHidden: (Cut cut, bool hidden) async {
+                final String? bad = await _api.setHidden(cut.id, hidden);
+                if (bad != null) return bad;
+                await _reloadDay();
+                if (context.mounted) {
+                  toast(context, hidden ? '非表示にしました' : '表示に戻しました');
+                }
+                return null;
+              },
+              onDetail: (Cut cut) => _sheetCut(context, cut),
+              onComments: (Cut cut) => _sheetCut(context, cut),
+            ),
           ),
         );
 
