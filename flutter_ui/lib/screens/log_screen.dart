@@ -1,10 +1,15 @@
 // ログの画面（カレンダー）。web の #app をそのまま写す。
 // ★ 枠を引かず、余白と点で示す。撮った日には点が並び、多い日ほど点が増える（最大6つ）。
-import 'package:flutter/widgets.dart';
+import 'dart:async';
+
+import 'package:flutter/material.dart';
 
 import '../data/models.dart';
+import '../design/icons.dart';
 import '../design/text.dart';
 import '../design/tokens.dart';
+import '../ui/flow.dart';
+import '../ui/sheet.dart';
 import '../ui/shell.dart';
 
 class LogScreen extends StatefulWidget {
@@ -15,6 +20,10 @@ class LogScreen extends StatefulWidget {
     this.onBack,
     this.onDay,
     this.onSettings,
+    this.members = const <String>[],
+    this.query = '',
+    this.author = '',
+    this.onFilter,
   });
 
   final LogItem log;
@@ -23,12 +32,61 @@ class LogScreen extends StatefulWidget {
   final ValueChanged<String>? onDay;
   final VoidCallback? onSettings;
 
+  /// 投稿者の候補（表示名）。先頭に「全員」を足して出す。
+  final List<String> members;
+
+  final String query;
+  final String author;
+
+  /// メモの語と投稿者で絞り込む
+  final void Function(String q, String author)? onFilter;
+
   @override
   State<LogScreen> createState() => _LogScreenState();
 }
 
 class _LogScreenState extends State<LogScreen> {
   final ScrollController _scroll = ScrollController();
+  late final TextEditingController _q = TextEditingController(text: widget.query);
+  Timer? _typing;
+
+  /// 打ち終わるのを少し待ってから絞る。1文字ごとに取りに行かない。
+  void _onTyped(String v) {
+    _typing?.cancel();
+    _typing = Timer(const Duration(milliseconds: 350), () {
+      widget.onFilter?.call(v.trim(), widget.author);
+    });
+  }
+
+  Future<void> _pickAuthor() async {
+    if (widget.onFilter == null) return;
+    await openSheet<void>(
+      context,
+      children: <Widget>[
+        Builder(
+          builder: (BuildContext context) {
+            final Space sp = spaceOf(context);
+            return CssColumn(<Block>[
+              Block(const SheetTitle('アップロードした人'), bottom: sp.s1),
+              for (final String name in <String>['全員', ...widget.members])
+                Block(
+                  _Choice(
+                    label: name,
+                    on: name == '全員' ? widget.author.isEmpty : name == widget.author,
+                    onTap: () {
+                      widget.onFilter!(_q.text.trim(), name == '全員' ? '' : name);
+                      Navigator.of(context).pop();
+                    },
+                  ),
+                  top: sp.s1,
+                  bottom: sp.s1,
+                ),
+            ], outer: false);
+          },
+        ),
+      ],
+    );
+  }
 
   @override
   void initState() {
@@ -41,6 +99,8 @@ class _LogScreenState extends State<LogScreen> {
 
   @override
   void dispose() {
+    _typing?.cancel();
+    _q.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -91,10 +151,59 @@ class _LogScreenState extends State<LogScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         TopBar(children: <Widget>[
-          IconBtn('back', onTap: widget.onBack),
+          IconBtn('back', label: 'ログ一覧へ戻る', onTap: widget.onBack),
           Crumbs(items: <String>['ログ', widget.log.name]),
-          IconBtn('settings', onTap: widget.onSettings),
+          // CSS: .crumb-meta — 非公開か、何人いるか
+          Text(
+            widget.log.isPrivate ? '非公開' : '${widget.log.memberCount}人',
+            style: Typo.of(context).small,
+          ),
+          IconBtn('settings', label: 'このログの設定', onTap: widget.onSettings),
         ]),
+
+        // CSS: .list-toolbar — メモの語と投稿者で絞る
+        Padding(
+          padding: EdgeInsets.fromLTRB(sp.s4, sp.s1, sp.s4, sp.s2),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: TextField(
+                    controller: _q,
+                    style: Typo.of(context).body.copyWith(fontSize: 13),
+                    cursorColor: colorsOf(context).ink,
+                    textInputAction: TextInputAction.search,
+                    onChanged: _onTyped,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                      hintText: 'メモを検索',
+                      hintStyle: Typo.of(context).body
+                          .copyWith(fontSize: 13, color: colorsOf(context).mute),
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(width: sp.s3),
+              GestureDetector(
+                onTap: _pickAuthor,
+                behavior: HitTestBehavior.opaque,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(widget.author.isEmpty ? '全員' : widget.author,
+                        style: Typo.of(context).body
+                            .copyWith(fontSize: 13, color: colorsOf(context).mute)),
+                    const SizedBox(width: 4),
+                    Ic('next', size: 11, color: colorsOf(context).mute),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
         Expanded(
           child: SingleChildScrollView(
             controller: _scroll,
@@ -262,6 +371,34 @@ class _Day extends StatelessWidget {
           ],
         ),
       ),
+      ),
+    );
+  }
+}
+
+
+/// 選ぶときの1行。選んでいるものだけ反転する。
+class _Choice extends StatelessWidget {
+  const _Choice({required this.label, required this.on, required this.onTap});
+
+  final String label;
+  final bool on;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Palette c = colorsOf(context);
+    final Space sp = spaceOf(context);
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 44),
+        alignment: Alignment.centerLeft,
+        padding: EdgeInsets.symmetric(horizontal: on ? sp.s2 : 0),
+        color: on ? c.sel : null,
+        child: Text(label,
+            style: Typo(c).body.copyWith(fontSize: 14, color: on ? c.selInk : c.ink)),
       ),
     );
   }

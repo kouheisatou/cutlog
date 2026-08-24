@@ -104,6 +104,9 @@ class _HostState extends State<_Host> {
   String? _day;
   List<Cut> _dayCuts = <Cut>[];
   String _logFilter = '';                 // ログ一覧の絞り込み
+  String _logQuery = '';                  // カレンダーのメモ検索
+  String _logAuthor = '';                 // カレンダーの投稿者の絞り込み
+  List<Cut> _mapPick = <Cut>[];           // 地図で押した場所のカット
   String _cutFilter = '';                 // カット一覧の絞り込み
 
   @override
@@ -390,6 +393,23 @@ class _HostState extends State<_Host> {
     );
   }
 
+  /// カレンダーの中身を絞り込みつきで取り直す
+  Future<void> _reloadLogCuts() async {
+    final LogItem target = _log ?? _target;
+    final String? id = _logAuthor.isEmpty
+        ? null
+        : ((_logDetail['members'] as List<dynamic>? ?? <dynamic>[])
+                .cast<Map<String, dynamic>>()
+                .firstWhere((Map<String, dynamic> m) => m['display_name'] == _logAuthor,
+                    orElse: () => <String, dynamic>{})['id'] as String?);
+    final List<Cut> got = await _api.cutsOfLog(
+      target.id,
+      query: _logQuery.isEmpty ? null : _logQuery,
+      author: id,
+    );
+    if (mounted) setState(() => _logCuts = got);
+  }
+
   /// 自分のことだけ取り直す（既定の保存先を変えたあとなど）
   Future<void> _loadMe() async {
     final Map<String, dynamic> mine = await _api.meRaw();
@@ -590,6 +610,21 @@ class _HostState extends State<_Host> {
       case 'cut':
         return _allScreen();
 
+      case 'maplist':
+        return Screen(
+          tab: 'map',
+          onTab: _selectTab,
+          child: Builder(
+            builder: (BuildContext context) => AllScreen(
+              cuts: _mapPick,
+              media: _media,
+              title: 'この場所の${_mapPick.length}件',
+              onBack: () => setState(() => _tab = 'map'),
+              onOpen: (Cut c) => _sheetCut(context, c),
+            ),
+          ),
+        );
+
       case 'map':
         return Screen(
           tab: 'map',
@@ -597,11 +632,17 @@ class _HostState extends State<_Host> {
           child: Padding(
             // CSS: .body.full { padding: 0 0 calc(57px + safe) } — 地図は下の帯以外を全部使う
             padding: EdgeInsets.only(bottom: 57 + MediaQuery.paddingOf(context).bottom),
-            child: MapScreen(
-              cuts: _cuts,
-              media: _media,
-              tileUrl: (_config['mapTileUrl'] as String?) ??
-                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            child: Builder(
+              builder: (BuildContext context) => MapScreen(
+                cuts: _cuts,
+                media: _media,
+                tileUrl: (_config['mapTileUrl'] as String?) ??
+                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                onOpen: (List<Cut> here) => setState(() {
+                  _mapPick = here..sort((Cut a, Cut b) => b.takenAt.compareTo(a.takenAt));
+                  _tab = 'maplist';
+                }),
+              ),
             ),
           ),
         );
@@ -613,6 +654,19 @@ class _HostState extends State<_Host> {
           child: LogScreen(
             log: _log ?? _target,
             cuts: _logCuts,
+            members: ((_logDetail['members'] as List<dynamic>?) ?? <dynamic>[])
+                .map((dynamic m) => (m as Map<String, dynamic>)['display_name'] as String? ?? '')
+                .where((String n) => n.isNotEmpty)
+                .toList(),
+            query: _logQuery,
+            author: _logAuthor,
+            onFilter: (String q, String author) async {
+              setState(() {
+                _logQuery = q;
+                _logAuthor = author;
+              });
+              await _reloadLogCuts();
+            },
             onBack: () => setState(() => _stack = 'logs'),
             onDay: _openDay,
             onSettings: () => setState(() => _stack = 'logset'),

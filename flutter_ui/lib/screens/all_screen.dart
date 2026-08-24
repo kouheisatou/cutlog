@@ -24,6 +24,8 @@ class AllScreen extends StatefulWidget {
     this.onExport,
     this.onMove,
     this.onDelete,
+    this.title,
+    this.onBack,
   });
 
   final List<Cut> cuts;
@@ -39,6 +41,10 @@ class AllScreen extends StatefulWidget {
   final Future<void> Function(List<Cut> picked)? onExport;
   final Future<void> Function(List<Cut> picked)? onMove;
   final Future<void> Function(List<Cut> picked)? onDelete;
+
+  /// 見出し（地図から来たときなど）。無ければ ふつうのカット一覧。
+  final String? title;
+  final VoidCallback? onBack;
 
   @override
   State<AllScreen> createState() => _AllScreenState();
@@ -126,9 +132,16 @@ class _AllScreenState extends State<AllScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         TopBar(children: <Widget>[
+          if (widget.onBack != null) IconBtn('back', label: '戻る', onTap: widget.onBack),
+          if (widget.title != null)
+            Text(widget.title!, style: Typo(c).crumbCurrent)
+          else
+            const SizedBox.shrink(),
           const Spacer(),
-          IconBtn('search', label: '検索', onTap: widget.onSearch),
-          IconBtn('plus', label: '取り込む', onTap: widget.onAdd),
+          if (widget.title == null) ...<Widget>[
+            IconBtn('search', label: '検索', onTap: widget.onSearch),
+            IconBtn('plus', label: '取り込む', onTap: widget.onAdd),
+          ],
         ]),
 
         // CSS: .filter-bar — いま何で絞っているか
