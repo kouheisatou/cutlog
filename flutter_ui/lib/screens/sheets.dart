@@ -626,3 +626,63 @@ class _LabeledRow extends StatelessWidget {
     );
   }
 }
+
+
+/// 共有リンクの一覧
+/// ★ 停止しても行は消さない。停止したことが分かるようにしておく。
+Future<void> openSharesSheet(
+  BuildContext context, {
+  required List<ShareLink> shares,
+  required Future<String?> Function(String id) onRevoke,
+  required void Function(String url) onCopy,
+}) {
+  return openSheet<void>(
+    context,
+    children: <Widget>[
+      _Body(
+        builder: (BuildContext context, _Report say) {
+          final Palette c = colorsOf(context);
+          final Typo t = Typo(c);
+          final Space sp = spaceOf(context);
+          return CssColumn(<Block>[
+            Block(const SheetTitle('共有リンク'), bottom: sp.s1),
+            if (shares.isEmpty)
+              Block(Text('まだ共有リンクはありません。', style: t.small), top: sp.s2)
+            else
+              for (final ShareLink l in shares)
+                Block(
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: <Widget>[
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Text(l.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: t.body.copyWith(fontWeight: FontWeight.w600, fontSize: 14)),
+                            Text(l.note, style: t.small),
+                          ],
+                        ),
+                      ),
+                      MiniBtn('コピー', icon: 'copy', onTap: () => onCopy(l.url)),
+                      SizedBox(width: sp.s2),
+                      MiniBtn('停止', onTap: () async {
+                        final bool yes = await confirm(context,
+                            'この共有リンクを停止しますか。リンクを知っている人も開けなくなります。', '停止');
+                        if (!yes || !context.mounted) return;
+                        say(context, () => onRevoke(l.id), close: false);
+                      }),
+                    ],
+                  ),
+                  top: sp.s1,
+                  bottom: sp.s1,
+                ),
+          ], outer: false);
+        },
+      ),
+    ],
+  );
+}

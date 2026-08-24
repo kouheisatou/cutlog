@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../data/models.dart';
+import '../design/icons.dart';
 import '../design/text.dart';
 import '../design/tokens.dart';
 import '../ui/controls.dart';
@@ -19,11 +20,16 @@ class LogSetScreen extends StatefulWidget {
     this.onSave,
     this.onRotate,
     this.onTrash,
+    this.onShares,
+    this.onRemoveMember,
+    this.onDefault,
+    this.owner = true,
+    this.isDefault = false,
   });
 
   final LogItem log;
 
-  /// [表示名, オーナーかどうか] の並び
+  /// [利用者ID, 表示名, オーナーかどうか] の並び
   final List<List<Object>> members;
 
   final VoidCallback? onBack;
@@ -36,6 +42,22 @@ class LogSetScreen extends StatefulWidget {
 
   /// 消したカットを見る
   final VoidCallback? onTrash;
+
+  /// 共有リンクの一覧を見る
+  final VoidCallback? onShares;
+
+  /// 参加者をこのログから外す
+  final Future<String?> Function(String userId, String name)? onRemoveMember;
+
+  /// 既定の保存先にするかを切り替える
+  final Future<String?> Function(bool on)? onDefault;
+
+  /// 自分がこのログのオーナーか。
+  /// ★ オーナーでなければ、題・長さ・保存・再生成は触れない（web と同じ）。
+  final bool owner;
+
+  /// いまこのログが既定の保存先か
+  final bool isDefault;
 
   @override
   State<LogSetScreen> createState() => _LogSetScreenState();
@@ -105,13 +127,19 @@ class _LogSetScreenState extends State<LogSetScreen> {
               Block(
                 ConstrainedBox(
                   constraints: const BoxConstraints(minHeight: 32),
-                  child: Row(
+                  child: GestureDetector(
+                    onTap: widget.onDefault == null
+                        ? null
+                        : () => _run(() => widget.onDefault!(!widget.isDefault), '保存しました'),
+                    behavior: HitTestBehavior.opaque,
+                    child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: <Widget>[
-                      const _Check(),
+                      _Check(on: widget.isDefault),
                       SizedBox(width: sp.s1),
                       Text(upper('デフォルトでこのログに保存する'), style: t.check),
                     ],
+                  ),
                   ),
                 ),
                 top: sp.s2,
@@ -119,7 +147,7 @@ class _LogSetScreenState extends State<LogSetScreen> {
               ),
 
               Block(_row(<Widget>[
-                PrimaryBtn('保存', onTap: () => _run(
+                PrimaryBtn('保存', onTap: !widget.owner ? null : () => _run(
                       () => widget.onSave!(
                         _name.text.trim(),
                         int.tryParse(_seconds.text.trim()) ?? log.cutSeconds,
@@ -128,8 +156,9 @@ class _LogSetScreenState extends State<LogSetScreen> {
                     )),
               ]), top: sp.s2, bottom: sp.s2),
 
-              // 招待
-              Block(_SectionHead('招待', t), top: sp.s5, bottom: sp.s1),
+              // 招待。非公開のログでは、そもそも人を招けないので出さない。
+              if (!log.isPrivate) Block(_SectionHead('招待', t), top: sp.s5, bottom: sp.s1),
+              if (!log.isPrivate)
               Block(_row(<Widget>[
                 Text(log.inviteCode ?? '', style: t.body.copyWith(letterSpacing: 2.7)),
                 SizedBox(width: sp.s3),
@@ -138,7 +167,8 @@ class _LogSetScreenState extends State<LogSetScreen> {
                   if (context.mounted) toast(context, 'コピーしました');
                 }),
                 SizedBox(width: sp.s3),
-                MiniBtn('再生成', onTap: () => _run(widget.onRotate!, '作り直しました')),
+                MiniBtn('再生成',
+                    onTap: !widget.owner ? null : () => _run(widget.onRotate!, '作り直しました')),
               ]), top: sp.s2, bottom: sp.s2),
 
               // 参加者
@@ -148,7 +178,21 @@ class _LogSetScreenState extends State<LogSetScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: widget.members
-                      .map((List<Object> m) => _Member(name: m[0] as String, owner: m[1] as bool))
+                      .map((List<Object> m) => _Member(
+                            name: m[1] as String,
+                            owner: m[2] as bool,
+                            // オーナーだけが、自分以外を外せる
+                            onRemove: !widget.owner || m[2] as bool || widget.onRemoveMember == null
+                                ? null
+                                : () async {
+                                    final bool yes = await confirm(context,
+                                        '${m[1]} をこのログから除外しますか。', '除外');
+                                    if (!yes) return;
+                                    await _run(
+                                        () => widget.onRemoveMember!(m[0] as String, m[1] as String),
+                                        '除外しました');
+                                  },
+                          ))
                       .toList(),
                 ),
                 top: 0,
@@ -157,7 +201,9 @@ class _LogSetScreenState extends State<LogSetScreen> {
 
               // 共有リンク
               Block(_SectionHead('共有リンク', t), top: sp.s5, bottom: sp.s1),
-              Block(_row(<Widget>[const TextBtn('共有リンクの一覧', icon: 'share')]), top: sp.s2, bottom: sp.s2),
+              Block(_row(<Widget>[
+                TextBtn('共有リンクの一覧', icon: 'share', onTap: widget.onShares),
+              ]), top: sp.s2, bottom: sp.s2),
 
               // ゴミ箱
               Block(_SectionHead('ゴミ箱', t), top: sp.s5, bottom: sp.s1),
@@ -223,7 +269,9 @@ class _Field extends StatelessWidget {
 
 /// CSS: input[type=checkbox] — 16px の四角。既定の余白は入れない。
 class _Check extends StatelessWidget {
-  const _Check();
+  const _Check({this.on = false});
+
+  final bool on;
 
   @override
   Widget build(BuildContext context) {
@@ -232,7 +280,11 @@ class _Check extends StatelessWidget {
       width: 16,
       height: 16,
       child: DecoratedBox(
-        decoration: BoxDecoration(border: Border.all(color: c.mute, width: 1.2)),
+        decoration: BoxDecoration(
+          color: on ? c.sel : null,
+          border: Border.all(color: on ? c.sel : c.mute, width: 1.2),
+        ),
+        child: on ? Center(child: Ic('check', size: 11, color: c.selInk, strokeWidth: 2.4)) : null,
       ),
     );
   }
@@ -262,10 +314,11 @@ class _SectionHead extends StatelessWidget {
 
 /// CSS: .member-row — 名前と役どころ。行のあいだにヘアラインを引く。
 class _Member extends StatelessWidget {
-  const _Member({required this.name, required this.owner});
+  const _Member({required this.name, required this.owner, this.onRemove});
 
   final String name;
   final bool owner;
+  final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -285,6 +338,10 @@ class _Member extends StatelessWidget {
           ),
           SizedBox(width: sp.s2),
           Text(owner ? 'オーナー' : 'メンバー', style: t.small),
+          if (onRemove != null) ...<Widget>[
+            SizedBox(width: sp.s2),
+            MiniBtn('除外', onTap: onRemove),
+          ],
         ],
       ),
     );

@@ -5,6 +5,7 @@ import 'dart:async' show unawaited;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:url_launcher/url_launcher.dart';
 
 import 'data/api.dart';
@@ -89,6 +90,7 @@ class _HostState extends State<_Host> {
   List<Cut> _cuts = <Cut>[];              // ログをまたいだ全部
   Me? _me;
   Reminder _reminder = const Reminder();
+  String? _defaultLogId;        // 既定の保存先
   Map<String, dynamic> _config = <String, dynamic>{};
   String? _error;
   bool _needAuth = false;
@@ -130,6 +132,7 @@ class _HostState extends State<_Host> {
         _logs = got[0]! as List<LogItem>;
         _me = Me.fromJson(mine['user'] as Map<String, dynamic>);
         _reminder = Reminder.fromJson(mine['reminder'] as Map<String, dynamic>?);
+        _defaultLogId = mine['defaultLogId'] as String?;
         _config = got[2]! as Map<String, dynamic>;
         _cuts = got[3]! as List<Cut>;
       });
@@ -233,13 +236,26 @@ class _HostState extends State<_Host> {
         context,
         onCreate: (String name) async {
           final String? bad = await _api.createLog(name);
-          if (bad == null) await _reload();
-          return bad;
+          if (bad != null) return bad;
+          await _reload();
+          if (!mounted) return null;
+          // ★ 作ってすぐ撮れるようにする。作っただけで放り出さない（web と同じ）。
+          final LogItem made = _logs!.firstWhere((LogItem l) => l.name == name,
+              orElse: () => _target);
+          setState(() {
+            _log = made;
+            _stack = 'log';
+            _tab = 'logs';
+          });
+          WidgetsBinding.instance.addPostFrameCallback((_) => _openCapture());
+          return null;
         },
         onJoin: (String code) async {
           final String? bad = await _api.joinLog(code);
-          if (bad == null) await _reload();
-          return bad;
+          if (bad != null) return bad;
+          await _reload();
+          if (context.mounted) toast(context, 'ログに参加しました');
+          return null;
         },
       );
 
@@ -371,6 +387,39 @@ class _HostState extends State<_Host> {
           },
         ),
       ],
+    );
+  }
+
+  /// 自分のことだけ取り直す（既定の保存先を変えたあとなど）
+  Future<void> _loadMe() async {
+    final Map<String, dynamic> mine = await _api.meRaw();
+    if (!mounted) return;
+    setState(() {
+      _me = Me.fromJson(mine['user'] as Map<String, dynamic>);
+      _reminder = Reminder.fromJson(mine['reminder'] as Map<String, dynamic>?);
+      _defaultLogId = mine['defaultLogId'] as String?;
+    });
+  }
+
+  /// 共有リンクの一覧
+  Future<void> _openShares(BuildContext context) async {
+    final List<ShareLink> got = await _api.shares((_log ?? _target).id);
+    if (!context.mounted) return;
+    await openSharesSheet(
+      context,
+      shares: got,
+      onRevoke: (String id) async {
+        final String? bad = await _api.revokeShare(id);
+        if (bad == null && context.mounted) {
+          Navigator.of(context).pop();
+          toast(context, '共有リンクを停止しました');
+        }
+        return bad;
+      },
+      onCopy: (String url) async {
+        await Clipboard.setData(ClipboardData(text: url));
+        if (context.mounted) toast(context, 'コピーしました');
+      },
     );
   }
 
@@ -577,12 +626,26 @@ class _HostState extends State<_Host> {
             ...(_logDetail['log'] as Map<String, dynamic>? ?? <String, dynamic>{}),
             'cut_count': (_log ?? _target).cutCount,
           }),
+          owner: _logDetail['role'] == 'owner',
+          isDefault: _defaultLogId == (_log ?? _target).id,
           members: raw
               .map((dynamic m) => <Object>[
-                    (m as Map<String, dynamic>)['display_name'] as String? ?? '',
+                    (m as Map<String, dynamic>)['id'] as String? ?? '',
+                    m['display_name'] as String? ?? '',
                     m['role'] == 'owner',
                   ])
               .toList(),
+          onRemoveMember: (String userId, String name) async {
+            final String? bad = await _api.removeMember((_log ?? _target).id, userId);
+            if (bad == null) await _openLog(_log ?? _target, quiet: true);
+            return bad;
+          },
+          onDefault: (bool on) async {
+            final String? bad = await _api.setDefaultLog(on ? (_log ?? _target).id : null);
+            if (bad == null) await _loadMe();
+            return bad;
+          },
+          onShares: () => _openShares(context),
           onBack: () => setState(() => _stack = 'log'),
           onSave: (String name, int seconds) async {
             final String? bad = await _api.renameLog(
@@ -685,9 +748,15 @@ class _HostState extends State<_Host> {
       );
 
   /// 絞り込みの結果。空なら全部。
-  List<LogItem> get _visibleLogs => _logFilter.isEmpty
-      ? _logs!
-      : _logs!.where((LogItem l) => l.name.contains(_logFilter)).toList();
+  /// 絞り込みの結果。空なら全部。
+  /// ★ 名前だけでなくオーナー名にも当てる（web と同じ）。
+  List<LogItem> get _visibleLogs {
+    if (_logFilter.isEmpty) return _logs!;
+    final String q = _logFilter.toLowerCase();
+    return _logs!
+        .where((LogItem l) => '${l.name} ${l.ownerName ?? ''}'.toLowerCase().contains(q))
+        .toList();
+  }
 
   List<Cut> get _visibleCuts => _cutFilter.isEmpty
       ? _cuts

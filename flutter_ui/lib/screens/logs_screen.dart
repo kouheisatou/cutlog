@@ -9,6 +9,7 @@ import '../data/models.dart';
 import '../design/icons.dart';
 import '../design/text.dart';
 import '../design/tokens.dart';
+import '../ui/controls.dart';
 import '../ui/shell.dart';
 
 class LogsScreen extends StatelessWidget {
@@ -19,6 +20,8 @@ class LogsScreen extends StatelessWidget {
     this.onOpen,
     this.onSearch,
     this.onAdd,
+    this.filter = '',
+    this.onClearFilter,
   });
 
   final List<LogItem> logs;
@@ -26,6 +29,10 @@ class LogsScreen extends StatelessWidget {
   final ValueChanged<LogItem>? onOpen;
   final VoidCallback? onSearch;
   final VoidCallback? onAdd;
+
+  /// いま何で絞っているか
+  final String filter;
+  final VoidCallback? onClearFilter;
 
   @override
   Widget build(BuildContext context) {
@@ -36,9 +43,44 @@ class LogsScreen extends StatelessWidget {
       children: <Widget>[
         TopBar(children: <Widget>[
           const Spacer(),
-          IconBtn('search', onTap: onSearch),
-          IconBtn('plus', onTap: onAdd),
+          IconBtn('search', label: 'ログを検索', onTap: onSearch),
+          IconBtn('plus', label: 'ログを追加', onTap: onAdd),
         ]),
+
+        // CSS: .filter-bar — いま何で絞っているか
+        if (filter.isNotEmpty)
+          Padding(
+            padding: EdgeInsets.fromLTRB(sp.s4, sp.s1, sp.s4, sp.s2),
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text('タイトル「$filter」で絞りこみ中',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Typo.of(context).mini.copyWith(decoration: TextDecoration.none)),
+                ),
+                SizedBox(width: sp.s2),
+                MiniBtn('解除', onTap: onClearFilter),
+              ],
+            ),
+          ),
+
+        if (logs.isEmpty)
+          Expanded(
+            child: Center(
+              child: Padding(
+                padding: EdgeInsets.all(sp.s4),
+                child: Text(
+                  filter.isEmpty
+                      ? 'まだログがありません。右上の＋から作れます。'
+                      : '条件に合うログはありません。',
+                  textAlign: TextAlign.center,
+                  style: Typo.of(context).empty,
+                ),
+              ),
+            ),
+          )
+        else
         Expanded(
           child: ScreenBody(
             top: false,

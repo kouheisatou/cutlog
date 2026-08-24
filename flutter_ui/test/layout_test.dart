@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:cutlog/data/media.dart';
 import 'package:cutlog/data/models.dart';
 import 'package:cutlog/design/tokens.dart';
 import 'package:cutlog/screens/logs_screen.dart';
@@ -37,7 +38,7 @@ void main() {
       tab: 'logs',
       child: LogsScreen(
         logs: <LogItem>[_log('プライベート', cuts: 0), _log('仕事のメモ', cuts: 3), _log('まいにち')],
-        mediaUrl: (String p) => p,
+        media: Media((String p) => p, const <String, String>{}),
       ),
     )));
 
