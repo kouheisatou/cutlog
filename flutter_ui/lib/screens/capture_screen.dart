@@ -96,8 +96,17 @@ class _CaptureScreenState extends State<CaptureScreen> with SingleTickerProvider
       } catch (_) {
         // 向きを固定できない端末では、そのままにする
       }
-      final double lo = await next.getMinZoomLevel();
-      final double hi = await next.getMaxZoomLevel();
+      // 寄れないカメラ（web の作りものなど）は、ここで断ってくる。
+      // ★ 断られたぶんでカメラごと開けなくしない。倍率の帯を出さないだけにする。
+      double lo = 1;
+      double hi = 1;
+      try {
+        lo = await next.getMinZoomLevel();
+        hi = await next.getMaxZoomLevel();
+      } catch (_) {
+        lo = 1;
+        hi = 1;
+      }
       final CameraController? old = _cam;
       if (!mounted) {
         await next.dispose();

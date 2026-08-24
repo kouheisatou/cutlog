@@ -20,12 +20,16 @@ class MapScreen extends StatefulWidget {
     required this.cuts,
     required this.media,
     required this.tileUrl,
+    this.credit = '',
     this.onOpen,
   });
 
   final List<Cut> cuts;
   final Media media;
   final String tileUrl;
+
+  /// 瓦の出どころの断り書き。OSM の決まりで、必ず見えるところに出す。
+  final String credit;
   final ValueChanged<List<Cut>>? onOpen;
 
   @override
@@ -37,6 +41,8 @@ class _MapScreenState extends State<MapScreen> {
   static const double _clusterRadius = 60;
 
   double _zoom = 9;
+
+  final MapController _map = MapController();
 
   List<Cut> get _placed =>
       widget.cuts.where((Cut c) => c.lat != null && c.lon != null).toList();
@@ -52,6 +58,9 @@ class _MapScreenState extends State<MapScreen> {
       bounds: LatLngBounds.fromPoints(at.map((Cut c) => LatLng(c.lat!, c.lon!)).toList()),
       padding: const EdgeInsets.all(40),     // web の fitBounds と同じ余白
       maxZoom: 16,
+      // ★ Leaflet の fitBounds は倍率を整数に落とす。合わせないと、
+      //   同じ範囲を入れても半段ぶん寄った絵になる。
+      forceIntegerZoomLevel: true,
     );
   }
 
@@ -68,6 +77,7 @@ class _MapScreenState extends State<MapScreen> {
         fit: StackFit.expand,
         children: <Widget>[
           FlutterMap(
+            mapController: _map,
             options: MapOptions(
               initialCenter: const LatLng(35.68, 139.77),
               initialZoom: 9,
@@ -88,6 +98,42 @@ class _MapScreenState extends State<MapScreen> {
                     textAlign: TextAlign.center, style: Typo(c).empty),
               ),
             ),
+          // Leaflet の .leaflet-control-zoom — 左上に寄せた 30px の四角を2つ
+          Positioned(
+            top: 10,
+            left: 10,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                _Zoom('＋', top: true, onTap: () => _step(1)),
+                _Zoom('－', top: false, onTap: () => _step(-1)),
+              ],
+            ),
+          ),
+
+          // Leaflet の .leaflet-control-attribution — 右下に薄く
+          if (widget.credit.isNotEmpty)
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: Container(
+                color: const Color(0xB3FFFFFF),
+                padding: const EdgeInsets.symmetric(horizontal: 5),
+                child: Text(
+                  widget.credit,
+                  style: TextStyle(
+                    color: c.inkSoft,
+                    fontFamily: sansFamily,
+                    fontFamilyFallback: sansFallback,
+                    fontSize: 11,
+                    height: lineHeight,
+                    leadingDistribution: TextLeadingDistribution.even,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ),
+            ),
+
           // CSS: .map-count — 何件を出しているか、左下に小さく
           Positioned(
             left: 8,
@@ -115,6 +161,13 @@ class _MapScreenState extends State<MapScreen> {
         ],
       ),
     );
+  }
+
+  /// 寄る・引く。地図の真ん中はそのまま。
+  void _step(int by) {
+    final double next = (_map.camera.zoom + by).clamp(1.0, 19.0);
+    _map.move(_map.camera.center, next);
+    setState(() => _zoom = next);
   }
 
   /// 近いものを束ねてピンにする。
@@ -217,6 +270,50 @@ class _Pin extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+
+/// Leaflet の .leaflet-control-zoom a — 30px の白い四角。上下で角の丸みが違う。
+class _Zoom extends StatelessWidget {
+  const _Zoom(this.label, {required this.top, required this.onTap});
+
+  final String label;
+  final bool top;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Palette c = colorsOf(context);
+
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 34,
+        height: 34,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: c.paper,
+          border: Border.all(color: const Color(0x33000000), width: 2),
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(top ? 4 : 0),
+            bottom: Radius.circular(top ? 0 : 4),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: c.ink,
+            fontFamily: sansFamily,
+            fontFamilyFallback: sansFallback,
+            fontSize: 16,
+            height: 1,
+            decoration: TextDecoration.none,
+          ),
+        ),
+      ),
     );
   }
 }

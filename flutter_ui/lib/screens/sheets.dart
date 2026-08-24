@@ -323,6 +323,7 @@ Future<void> openCutSheet(
   required Future<String?> Function(String note) onNote,
   required Future<String?> Function(String commentId) onDeleteComment,
   required void Function(String url) onDownload,
+  String meId = '',
   VoidCallback? onMove,
 }) {
   return openSheet<void>(
@@ -332,6 +333,7 @@ Future<void> openCutSheet(
       _CutBody(
         cut: cut,
         media: media,
+        meId: meId,
         load: load,
         onDelete: onDelete,
         onComment: onComment,
@@ -347,6 +349,7 @@ Future<void> openCutSheet(
 
 class _CutBody extends StatefulWidget {
   const _CutBody({
+    required this.meId,
     required this.cut,
     required this.media,
     required this.load,
@@ -358,6 +361,9 @@ class _CutBody extends StatefulWidget {
     required this.onDownload,
     this.onMove,
   });
+
+  /// いま入っている人。自分のひとことにだけ「消す」を出す。
+  final String meId;
 
   final Cut cut;
   final Media media;
@@ -619,31 +625,44 @@ class _CutBodyState extends State<_CutBody> {
         for (final Comment cm in _detail?.comments ?? <Comment>[])
           Block(
             // CSS: .comment — 顔と一緒に出す
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Avatar(
-                  initial: cm.author.isEmpty ? '?' : cm.author.characters.first,
-                  url: cm.avatarUrl == null ? null : media.url(cm.avatarUrl!),
-                  headers: media.headers,
-                ),
-                SizedBox(width: sp.s2),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      Text(cm.author,
-                          style: t.body.copyWith(fontSize: 12, color: c.inkSoft)),
-                      Text(cm.body, style: t.body.copyWith(fontSize: 14)),
-                    ],
+            // ★ 上下の空きは padding。Block の余白（margin）にすると隣とくっついて
+            //   1つぶんに縮み、行の間が web の半分になる。
+            Padding(
+              padding: EdgeInsets.symmetric(vertical: sp.s1),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Avatar(
+                    initial: cm.author.isEmpty ? '?' : cm.author.characters.first,
+                    url: cm.avatarUrl == null ? null : media.url(cm.avatarUrl!),
+                    headers: media.headers,
                   ),
-                ),
-                MiniBtn('消す', onTap: () => _run(() => widget.onDeleteComment(cm.id))),
-              ],
+                  SizedBox(width: sp.s2),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        // CSS: .c-body strong — 太字の 12px
+                        Text(cm.author,
+                            style: t.body.copyWith(
+                                fontSize: 12,
+                                color: c.inkSoft,
+                                fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 2),   // CSS: .c-body { gap: 2px }
+                        Text(cm.body, style: t.body.copyWith(fontSize: 14)),
+                      ],
+                    ),
+                  ),
+                  // ★ web は日画面の側だけに置いているが、詳細からも消せた方がよい。
+                  //   ただし消せるのは自分のぶんだけ（web と同じ決め）。
+                  if (cm.userId == widget.meId)
+                    MiniBtn('消す', onTap: () => _run(() => widget.onDeleteComment(cm.id))),
+                ],
+              ),
             ),
-            top: sp.s1,
-            bottom: sp.s1,
+            top: 0,
+            bottom: 0,
           ),
         Block(SheetRow(children: <Widget>[
           SheetField(

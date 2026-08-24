@@ -281,6 +281,7 @@ class _HostState extends State<_Host> {
   Future<void> _sheetCut(BuildContext context, Cut cut) => openCutSheet(
         context,
         cut: cut,
+        meId: _me?.id ?? '',
         media: _media,
         load: () => _api.cutDetail(cut.id),
         onDelete: () async {
@@ -858,6 +859,7 @@ class _HostState extends State<_Host> {
                 media: _media,
                 tileUrl: (_config['mapTileUrl'] as String?) ??
                     'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                credit: (_config['mapCredit'] as String?) ?? '',
                 onOpen: (List<Cut> here) => setState(() {
                   _mapPick = here..sort((Cut a, Cut b) => b.takenAt.compareTo(a.takenAt));
                   _tab = 'maplist';
