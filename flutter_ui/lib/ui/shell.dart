@@ -271,7 +271,8 @@ void _clearNote() {
 }
 
 /// CSS: .toast — 反転した細い帯を下から出す。
-void toast(BuildContext context, String message) {
+/// 既定は 2.6 秒。読むのに時間がいるもの（訳や長い文）は [long] で 6 秒に延ばす。
+void toast(BuildContext context, String message, {bool long = false}) {
   final OverlayState? layer = Overlay.maybeOf(context, rootOverlay: true);
   if (layer == null) return;
 
@@ -315,7 +316,8 @@ void toast(BuildContext context, String message) {
     ),
   );
   layer.insert(_note!);
-  _noteTimer = Timer(const Duration(seconds: 3), _clearNote);
+  _noteTimer = Timer(
+      Duration(milliseconds: long ? 6000 : 2600), _clearNote);
 }
 
 /// 取り返しのつかないことをする前に、一度だけ確かめる。

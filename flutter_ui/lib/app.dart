@@ -547,7 +547,7 @@ class _HostState extends State<_Host> {
     // ★ 端末では、写して終わりにせず、渡し先を選ばせる。
     //   人に見せるために作るものなので、そこまで運んで初めて役に立つ。
     await Clipboard.setData(ClipboardData(text: url ?? ''));
-    if (context.mounted) toast(context, '共有リンクを作り、コピーしました');
+    if (context.mounted) toast(context, '共有リンクを作り、コピーしました', long: true);
     if (!kIsWeb && (url ?? '').isNotEmpty) {
       await SharePlus.instance.share(ShareParams(text: url));
     }
@@ -601,7 +601,7 @@ class _HostState extends State<_Host> {
           return;
         }
         if (job['status'] == 'error') {
-          if (context.mounted) toast(context, '作れませんでした: ${job['message'] ?? ''}');
+          if (context.mounted) toast(context, '作れませんでした: ${job['message'] ?? ''}', long: true);
           return;
         }
       } catch (_) {
@@ -613,7 +613,7 @@ class _HostState extends State<_Host> {
         }
       }
     }
-    if (context.mounted) toast(context, '時間がかかっています。あとで確認してください');
+    if (context.mounted) toast(context, '時間がかかっています。あとで確認してください', long: true);
   }
 
   /// その日の中身を取り直す
