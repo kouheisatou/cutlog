@@ -5,6 +5,7 @@
 import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../design/icons.dart';
@@ -18,6 +19,8 @@ class CaptureScreen extends StatefulWidget {
     this.destination,
     this.onClose,
     this.onShot,
+    this.onPickDest,
+    this.onImport,
     this.cutSeconds = 2,
   });
 
@@ -28,6 +31,12 @@ class CaptureScreen extends StatefulWidget {
 
   /// 撮れたものを渡す。確かめる画面へ進むのは呼んだ側の仕事。
   final void Function(XFile file, int durationMs)? onShot;
+
+  /// 記録先を選び直す
+  final VoidCallback? onPickDest;
+
+  /// 端末の動画から取り込む
+  final VoidCallback? onImport;
 
   /// 1カットの長さ（秒）。ログごとに違う。
   final int cutSeconds;
@@ -56,6 +65,12 @@ class _CaptureScreenState extends State<CaptureScreen> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
+    // ★ 撮るのは横（16:9）。端末を縦に持っていても横で構えてもらう。
+    //   縦のまま撮れると、あとで見るときに帯状に潰れる。
+    SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
     _open();
   }
 
@@ -71,6 +86,13 @@ class _CaptureScreenState extends State<CaptureScreen> with SingleTickerProvider
         enableAudio: true,
       );
       await next.initialize();
+      // ★ 記録の向きも横に固定する。端末をどう持っていても、残るものは横になる。
+      //   画面だけ横にしても、記録が縦のままなら意味がない。
+      try {
+        await next.lockCaptureOrientation(DeviceOrientation.landscapeRight);
+      } catch (_) {
+        // 向きを固定できない端末では、そのままにする
+      }
       final double lo = await next.getMinZoomLevel();
       final double hi = await next.getMaxZoomLevel();
       final CameraController? old = _cam;
@@ -93,6 +115,8 @@ class _CaptureScreenState extends State<CaptureScreen> with SingleTickerProvider
 
   @override
   void dispose() {
+    // 撮り終えたら、向きの縛りを解く
+    SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     _ring.dispose();
     _cam?.dispose();
     super.dispose();
@@ -175,7 +199,14 @@ class _CaptureScreenState extends State<CaptureScreen> with SingleTickerProvider
                 children: <Widget>[
                   _LightBtn('close', onTap: widget.onClose),
                   SizedBox(width: sp.s2),
-                  if ((widget.destination ?? '').isNotEmpty) Flexible(child: _CapDest(widget.destination!)),
+                  if ((widget.destination ?? '').isNotEmpty)
+                    Flexible(
+                      child: GestureDetector(
+                        onTap: widget.onPickDest,
+                        behavior: HitTestBehavior.opaque,
+                        child: _CapDest(widget.destination!),
+                      ),
+                    ),
                   SizedBox(width: sp.s2),
                   const Spacer(),
                   if (!_recording && _cameras.length > 1)
@@ -212,7 +243,16 @@ class _CaptureScreenState extends State<CaptureScreen> with SingleTickerProvider
                     constraints: const BoxConstraints(maxWidth: 520),
                     child: Row(
                       children: <Widget>[
-                        const Expanded(child: Align(alignment: Alignment.centerLeft, child: _FileChip())),
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: GestureDetector(
+                              onTap: widget.onImport,
+                              behavior: HitTestBehavior.opaque,
+                              child: const _FileChip(),
+                            ),
+                          ),
+                        ),
                         _Shutter(ring: _ring, recording: _recording, onTap: _shoot),
                         const Expanded(
                           child: Align(alignment: Alignment.centerRight, child: _Chip('動画', opacity: .55)),

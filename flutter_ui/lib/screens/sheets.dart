@@ -126,6 +126,8 @@ Future<void> openMoveSheet(
   required List<LogItem> logs,
   required String fromLogId,
   required Future<String?> Function(String logId) onMove,
+  String title = 'カットの移動',
+  String? note,
 }) {
   return openSheet<void>(
     context,
@@ -135,9 +137,9 @@ Future<void> openMoveSheet(
           final Palette c = colorsOf(context);
           final Space sp = spaceOf(context);
           return CssColumn(<Block>[
-            Block(const SheetTitle('カットの移動'), bottom: sp.s1),
+            Block(SheetTitle(title), bottom: sp.s1),
             Block(
-              Text('移動したカットは、移動元のログで作成した共有リンクから外れます。',
+              Text(note ?? '移動したカットは、移動元のログで作成した共有リンクから外れます。',
                   style: Typo(c).small),
               bottom: sp.s3,
             ),

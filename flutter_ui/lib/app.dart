@@ -9,7 +9,10 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:url_launcher/url_launcher.dart';
 
 import 'data/api.dart';
+import 'package:image_picker/image_picker.dart' show ImagePicker, ImageSource;
+
 import 'data/media.dart';
+import 'data/place.dart';
 import 'data/models.dart';
 import 'data/push.dart';
 import 'design/text.dart';
@@ -301,18 +304,37 @@ class _HostState extends State<_Host> {
   /// 撮る → 確かめる → 残す。
   /// ★ 撮った直後に送らない。確かめる画面を挟むのは、撮り直しの余地を残すため。
   void _openCapture() {
-    final LogItem dest = _log ?? _target;
+    LogItem dest = _log ?? _target;
     Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (BuildContext _) => CaptureScreen(
-        destination: dest.name,
-        cutSeconds: dest.cutSeconds,
-        onClose: () => Navigator.of(context).maybePop(),
-        onShot: (XFile file, int durationMs) => _openReview(dest, file, durationMs),
+      builder: (BuildContext page) => StatefulBuilder(
+        builder: (BuildContext page, void Function(void Function()) refresh) => CaptureScreen(
+          destination: dest.name,
+          cutSeconds: dest.cutSeconds,
+          onClose: () => Navigator.of(page).maybePop(),
+          onShot: (XFile file, int durationMs) => _openReview(dest, file, durationMs),
+          // 記録先はこの撮影のあいだだけ。既定の保存先は変えない。
+          onPickDest: () => openMoveSheet(
+            page,
+            logs: _logs!,
+            fromLogId: '',
+            title: 'この撮影の記録先',
+            note: '撮るたびに、開いているログへ戻ります。',
+            onMove: (String logId) async {
+              refresh(() => dest = _logs!.firstWhere((LogItem l) => l.id == logId));
+              return null;
+            },
+          ),
+          onImport: () async {
+            final XFile? got = await ImagePicker().pickVideo(source: ImageSource.gallery);
+            if (got == null || !page.mounted) return;
+            _openReview(dest, got, 0, fromFile: true);
+          },
+        ),
       ),
     ));
   }
 
-  void _openReview(LogItem dest, XFile file, int durationMs) {
+  void _openReview(LogItem dest, XFile file, int durationMs, {bool fromFile = false}) {
     Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (BuildContext sheet) => ReviewScreen(
         file: file,
@@ -321,6 +343,8 @@ class _HostState extends State<_Host> {
         onClose: () => Navigator.of(sheet).maybePop(),
         onSave: (String note) async {
           final DateTime now = DateTime.now();
+          // 撮った場所。取れなくても止めない。
+          final Place? here = fromFile ? null : await askPlace();
           final String? bad = await _api.uploadCut(
             logId: dest.id,
             bytes: await file.readAsBytes(),
@@ -328,11 +352,14 @@ class _HostState extends State<_Host> {
             mime: file.name.endsWith('.webm') ? 'video/webm' : 'video/mp4',
             meta: <String, dynamic>{
               'kind': 'video',
-              'durationMs': durationMs,
+              if (durationMs > 0) 'durationMs': durationMs,
               'takenAt': now.toUtc().toIso8601String(),
               'tzOffset': -now.timeZoneOffset.inMinutes,
-              'source': 'camera',
+              'source': fromFile ? 'upload' : 'camera',
               if (note.isNotEmpty) 'note': note,
+              if (here != null) 'lat': here.lat,
+              if (here != null) 'lon': here.lon,
+              if (here != null) 'accuracy': here.accuracy,
             },
           );
           if (bad != null) return bad;

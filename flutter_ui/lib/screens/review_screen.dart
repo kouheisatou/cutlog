@@ -8,6 +8,7 @@ import 'dart:io' show File;
 import 'package:camera/camera.dart' show XFile;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
 import '../design/icons.dart';
@@ -56,6 +57,11 @@ class _ReviewScreenState extends State<ReviewScreen> {
   @override
   void initState() {
     super.initState();
+    // 撮ったものは横。確かめるあいだも横のままにする。
+    SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
     _load();
   }
 
@@ -92,6 +98,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
   @override
   void dispose() {
+    SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     _player?.dispose();
     _note.dispose();
     super.dispose();
