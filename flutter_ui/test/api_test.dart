@@ -109,6 +109,12 @@ void main() {
 
     // ── ひとことと反応 ──────────────────────────────
     expect(await api.addComment(cut.id, 'テストのひとこと'), isNull);
+    // ★ 書いたら消す。残すと試すたびに増えて、見比べの絵まで変わってしまう。
+    final CutDetail detailNow = await api.cutDetail(cut.id);
+    final Comment written =
+        detailNow.comments.lastWhere((Comment c) => c.body == 'テストのひとこと');
+    expect(await api.deleteComment(written.id), isNull);
+
     expect(await api.react(cut.id, '👍'), isNull);
     expect(await api.react(cut.id, '👍'), isNull);      // もう一度で取り消し
 

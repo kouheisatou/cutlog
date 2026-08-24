@@ -25,7 +25,8 @@ Future<T?> openSheet<T>(
     // 中身の高さぶんだけ立ち上がる（画面の半分で止めない）
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (BuildContext context) => SheetPanel(wide: wide, children: children),
+    builder: (BuildContext context) =>
+        SheetPanel(wide: wide, children: children),
   );
 }
 
@@ -44,76 +45,92 @@ class SheetPanel extends StatelessWidget {
     final Space sp = spaceOf(context);
     final double safeBottom = MediaQuery.paddingOf(context).bottom;
 
+    // 文字を打つ板が出ている高さ。
+    // ★ これを空けないと、札が板の後ろへ丸ごと隠れる。web ではブラウザが
+    //   画面そのものを縮めてくれるが、端末では誰も縮めてくれない。
+    final double keys = MediaQuery.viewInsetsOf(context).bottom;
+
     // ★ 横だけ中央に寄せ、縦は中身の高さのまま。Center にすると
     //   札が画面の高さいっぱいに広がり、中身が真ん中に浮いてしまう。
-    return Align(
-      alignment: Alignment.bottomCenter,
-      heightFactor: 1,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: wide ? 720 : 640,
-          // CSS: .panel { max-height: 88dvh }
-          maxHeight: MediaQuery.sizeOf(context).height * 0.88,
-        ),
-        child: Container(
-          decoration: BoxDecoration(
-            color: c.paper,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                offset: const Offset(0, -8),
-                blurRadius: blurFromCss(40),
-                color: const Color(0x38000000),
-              ),
-            ],
+    return Padding(
+      padding: EdgeInsets.only(bottom: keys),
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        heightFactor: 1,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: wide ? 720 : 640,
+            // CSS: .panel { max-height: 88dvh }
+            maxHeight: (MediaQuery.sizeOf(context).height - keys) * 0.88,
           ),
-          // ★ 閉じるボタンは札の角から測る（CSS の position:absolute は
-          //   余白の外側、札そのものの角を基準にする）。余白の内側に置くと 16px 下がる。
-          child: Stack(
-            children: <Widget>[
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                  sp.s4, sp.s4, sp.s4, safeBottom > sp.s4 ? safeBottom : sp.s4,
+          child: Container(
+            decoration: BoxDecoration(
+              color: c.paper,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(18),
+              ),
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  offset: const Offset(0, -8),
+                  blurRadius: blurFromCss(40),
+                  color: const Color(0x38000000),
                 ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      // CSS: .panel::before — 掴むところ。ここを下へ払うと閉じる。
-                      Center(
-                        child: Container(
-                          width: 40,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: c.hair,
-                            borderRadius: BorderRadius.circular(999),
+              ],
+            ),
+            // ★ 閉じるボタンは札の角から測る（CSS の position:absolute は
+            //   余白の外側、札そのものの角を基準にする）。余白の内側に置くと 16px 下がる。
+            child: Stack(
+              children: <Widget>[
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    sp.s4,
+                    sp.s4,
+                    sp.s4,
+                    safeBottom > sp.s4 ? safeBottom : sp.s4,
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        // CSS: .panel::before — 掴むところ。ここを下へ払うと閉じる。
+                        Center(
+                          child: Container(
+                            width: 40,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: c.hair,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
                           ),
                         ),
-                      ),
-                      SizedBox(height: sp.s3),
-                      ...children,
-                    ],
-                  ),
-                ),
-              ),
-              // CSS: .panel-close { position: absolute; top: var(--s1); right: var(--s1) }
-              Positioned(
-                top: sp.s1,
-                right: sp.s1,
-                child: GestureDetector(
-                  onTap: () => Navigator.of(context).maybePop(),
-                  behavior: HitTestBehavior.opaque,
-                  child: SizedBox(
-                    width: 44,
-                    height: 44,
-                    child: Center(
-                      child: Opacity(opacity: .7, child: Ic('close', color: c.ink)),
+                        SizedBox(height: sp.s3),
+                        ...children,
+                      ],
                     ),
                   ),
                 ),
-              ),
-            ],
+                // CSS: .panel-close { position: absolute; top: var(--s1); right: var(--s1) }
+                Positioned(
+                  top: sp.s1,
+                  right: sp.s1,
+                  child: GestureDetector(
+                    onTap: () => Navigator.of(context).maybePop(),
+                    behavior: HitTestBehavior.opaque,
+                    child: SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: Center(
+                        child: Opacity(
+                          opacity: .7,
+                          child: Ic('close', color: c.ink),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -147,9 +164,9 @@ class SheetHead extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Text(
-        upper(text),
-        style: Typo.of(context).sectionHead.copyWith(fontWeight: FontWeight.w700),
-      );
+    upper(text),
+    style: Typo.of(context).sectionHead.copyWith(fontWeight: FontWeight.w700),
+  );
 }
 
 /// CSS: .panel-row — 横に並べる。すきまは s3。
@@ -226,7 +243,9 @@ class SheetField extends StatelessWidget {
       // 「余白 6 ＋ 行 ＋ 余白 6 ＋ 線 1」に合わない。
       height: 6 + fontSize * lineHeight + 6 + 1,
       padding: const EdgeInsets.symmetric(vertical: 6),
-      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.hair))),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: c.hair)),
+      ),
       child: TextField(
         controller: controller,
         obscureText: obscure,
@@ -243,6 +262,8 @@ class SheetField extends StatelessWidget {
         ),
       ),
     );
-    return width == null ? Expanded(child: box) : SizedBox(width: width, child: box);
+    return width == null
+        ? Expanded(child: box)
+        : SizedBox(width: width, child: box);
   }
 }
