@@ -5,6 +5,7 @@ import 'dart:async' show unawaited;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'data/api.dart';
 import 'data/media.dart';
@@ -246,6 +247,7 @@ class _HostState extends State<_Host> {
         context,
         cut: cut,
         media: _media,
+        load: () => _api.cutDetail(cut.id),
         onDelete: () async {
           final String? bad = await _api.deleteCut(cut.id);
           if (bad == null) await _reload();
@@ -253,6 +255,16 @@ class _HostState extends State<_Host> {
         },
         onComment: (String body) => _api.addComment(cut.id, body),
         onReact: (String emoji) => _api.react(cut.id, emoji),
+        onNote: (String note) async {
+          final String? bad = await _api.setNote(cut.id, note);
+          if (bad == null) await _reload();
+          return bad;
+        },
+        onDeleteComment: (String id) => _api.deleteComment(id),
+        // ★ 端末の外へ渡す。アプリの中で保存先を選ばせるより、
+        //   端末が持っている仕組みに任せたほうが迷わない。
+        onDownload: (String url) => launchUrl(Uri.parse(url),
+            mode: LaunchMode.externalApplication),
         onMove: () => openMoveSheet(
           context,
           logs: _logs!,

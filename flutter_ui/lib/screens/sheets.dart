@@ -194,137 +194,362 @@ class _MoveRow extends StatelessWidget {
 }
 
 /// カットの詳細（どの画面からも、同じ札で開く）
-/// ★ 詳しい値（大きさ・場所・ID など）は右上の調整から開く。ここでは畳んでおく。
+/// ★ 詳しい値（大きさ・場所・ID など）は右上の調整から開く。ふだんは畳んでおく。
 Future<void> openCutSheet(
   BuildContext context, {
   required Cut cut,
   required Media media,
+  required Future<CutDetail> Function() load,
   required Future<String?> Function() onDelete,
   required Future<String?> Function(String body) onComment,
   required Future<String?> Function(String emoji) onReact,
+  required Future<String?> Function(String note) onNote,
+  required Future<String?> Function(String commentId) onDeleteComment,
+  required void Function(String url) onDownload,
   VoidCallback? onMove,
-  List<String> myReactions = const <String>[],
 }) {
-  final TextEditingController body = TextEditingController();
-  final DateTime at = cut.localTime;
-  String two(int n) => n.toString().padLeft(2, '0');
-  final String title =
-      '${at.year}.${two(at.month)}.${two(at.day)} ${two(at.hour)}:${two(at.minute)}';
-
   return openSheet<void>(
     context,
     wide: true,
     children: <Widget>[
-      _Body(
-        builder: (BuildContext context, _Report say) {
-          final Palette c = colorsOf(context);
-          final Typo t = Typo(c);
-          final Space sp = spaceOf(context);
-
-          return CssColumn(<Block>[
-            // CSS: .detail-media — 寸法が分からないうちは 16:9 で置く
-            Block(
-              AspectRatio(
-                aspectRatio: 16 / 9,
-                child: Container(
-                  clipBehavior: Clip.hardEdge,
-                  decoration: BoxDecoration(color: c.paper2),
-                  child: cut.thumbUrl == null
-                      ? null
-                      : CachedNetworkImage(imageUrl: media.url(cut.thumbUrl!), httpHeaders: media.headers, fit: BoxFit.contain),
-                ),
-              ),
-            ),
-
-            // CSS: .detail-head — 撮った人・撮った時
-            Block(
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        SizedBox(height: sp.s4),   // .eyebrow { margin: var(--s4) 0 var(--s1) }
-                        Text(upper(cut.author ?? ''), style: t.eyebrow),
-                        SizedBox(height: sp.s1),
-                        // ★ .panel h2 が後に書かれているので、.detail h2 の 22px ではなく 12px が効く
-                        Text(title, style: t.panelHead.copyWith(fontWeight: FontWeight.w700)),
-                        SizedBox(height: sp.s1),
-                      ],
-                    ),
-                  ),
-                  SizedBox(width: sp.s2),
-                  const IconBtn('settings'),
-                ],
-              ),
-            ),
-
-            // CSS: .detail-actions { margin: var(--s3) 0 var(--s4) }
-            Block(
-              Row(children: <Widget>[
-                const TextBtn('ダウンロード', icon: 'download'),
-                SizedBox(width: sp.s3),
-                TextBtn('移動', icon: 'move', onTap: onMove),
-                SizedBox(width: sp.s3),
-                TextBtn('削除', icon: 'trash', danger: true, onTap: () async {
-                  final bool yes = await confirm(context, 'このカットを削除しますか？', '削除');
-                  if (!yes || !context.mounted) return;
-                  final String? bad = await onDelete();
-                  if (!context.mounted) return;
-                  if (bad != null) {
-                    toast(context, bad);
-                  } else {
-                    Navigator.of(context).pop();
-                  }
-                }),
-              ]),
-              top: sp.s3,
-              bottom: sp.s4,
-            ),
-
-            // CSS: .reactions { margin: var(--s3) 0 }
-            Block(
-              Row(
-                children: <Widget>[
-                  for (final String e in <String>['👍', '🎉', '😂', '🥺', '🔥']) ...<Widget>[
-                    if (e != '👍') SizedBox(width: sp.s2),
-                    GestureDetector(
-                      onTap: () => say(context, () => onReact(e), close: false),
-                      behavior: HitTestBehavior.opaque,
-                      child: Opacity(
-                        opacity: myReactions.contains(e) ? 1 : .45,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          child: Text(e, style: t.body),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              top: sp.s3,
-              bottom: sp.s3,
-            ),
-
-            // CSS: .comments の margin-top は s4 だが、中の h3 が s5 の上マージンを持ち、
-            //   親を突き抜けて重なる（margin collapsing）。効くのは大きい方の s5。
-            Block(const SheetHead('コメント'), top: sp.s5, bottom: sp.s2),
-            Block(SheetRow(children: <Widget>[
-              SheetField(hint: 'コメントを書く', width: 149, controller: body),
-              PrimaryBtn('送信', onTap: () {
-                final String text = body.text.trim();
-                if (text.isEmpty) return;
-                body.clear();
-                say(context, () => onComment(text), close: false);
-              }),
-            ]), top: sp.s2, bottom: sp.s2),
-          ]);
-        },
+      _CutBody(
+        cut: cut,
+        media: media,
+        load: load,
+        onDelete: onDelete,
+        onComment: onComment,
+        onReact: onReact,
+        onNote: onNote,
+        onDeleteComment: onDeleteComment,
+        onDownload: onDownload,
+        onMove: onMove,
       ),
     ],
   );
+}
+
+class _CutBody extends StatefulWidget {
+  const _CutBody({
+    required this.cut,
+    required this.media,
+    required this.load,
+    required this.onDelete,
+    required this.onComment,
+    required this.onReact,
+    required this.onNote,
+    required this.onDeleteComment,
+    required this.onDownload,
+    this.onMove,
+  });
+
+  final Cut cut;
+  final Media media;
+  final Future<CutDetail> Function() load;
+  final Future<String?> Function() onDelete;
+  final Future<String?> Function(String body) onComment;
+  final Future<String?> Function(String emoji) onReact;
+  final Future<String?> Function(String note) onNote;
+  final Future<String?> Function(String commentId) onDeleteComment;
+  final void Function(String url) onDownload;
+  final VoidCallback? onMove;
+
+  @override
+  State<_CutBody> createState() => _CutBodyState();
+}
+
+class _CutBodyState extends State<_CutBody> {
+  final TextEditingController _comment = TextEditingController();
+  late final TextEditingController _note = TextEditingController(text: widget.cut.note ?? '');
+  CutDetail? _detail;
+  bool _showMeta = false;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  @override
+  void dispose() {
+    _comment.dispose();
+    _note.dispose();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    try {
+      final CutDetail got = await widget.load();
+      if (mounted) setState(() => _detail = got);
+    } catch (_) {
+      // 取れなくても、手元にあるぶんだけで出す
+    }
+  }
+
+  Future<void> _run(Future<String?> Function() job, {String? done, bool close = false}) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final String? bad = await job();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (bad != null) {
+      toast(context, bad);
+      return;
+    }
+    if (done != null) toast(context, done);
+    if (close) {
+      Navigator.of(context).pop();
+    } else {
+      await _refresh();
+    }
+  }
+
+  static String _two(int n) => n.toString().padLeft(2, '0');
+
+  @override
+  Widget build(BuildContext context) {
+    final Palette c = colorsOf(context);
+    final Typo t = Typo(c);
+    final Space sp = spaceOf(context);
+    final Cut cut = _detail?.cut ?? widget.cut;
+    final DateTime at = cut.localTime;
+    final String title =
+        '${at.year}.${_two(at.month)}.${_two(at.day)} ${_two(at.hour)}:${_two(at.minute)}';
+
+    return Opacity(
+      opacity: _busy ? .5 : 1,
+      child: CssColumn(<Block>[
+        // CSS: .detail-media — 寸法が分からないうちは 16:9 で置く
+        Block(
+          AspectRatio(
+            aspectRatio: _detail != null && _detail!.width > 0 && _detail!.height > 0
+                ? _detail!.width / _detail!.height
+                : 16 / 9,
+            child: Container(
+              clipBehavior: Clip.hardEdge,
+              decoration: BoxDecoration(color: c.paper2),
+              child: cut.thumbUrl == null
+                  ? null
+                  : CachedNetworkImage(
+                      imageUrl: media.url(cut.thumbUrl!),
+                      httpHeaders: media.headers,
+                      fit: BoxFit.contain,
+                    ),
+            ),
+          ),
+        ),
+
+        // CSS: .detail-head — 撮った人・撮った時。右に詳しい値の開閉。
+        Block(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    SizedBox(height: sp.s4),
+                    Text(upper(cut.author ?? ''), style: t.eyebrow),
+                    SizedBox(height: sp.s1),
+                    Text(title, style: t.panelHead.copyWith(fontWeight: FontWeight.w700)),
+                    SizedBox(height: sp.s1),
+                  ],
+                ),
+              ),
+              SizedBox(width: sp.s2),
+              IconBtn('settings',
+                  label: '詳しい値を見る・直す',
+                  onTap: () => setState(() => _showMeta = !_showMeta)),
+            ],
+          ),
+        ),
+
+        // CSS: .detail-actions { margin: var(--s3) 0 var(--s4) }
+        Block(
+          Wrap(
+            spacing: sp.s3,
+            runSpacing: sp.s1,
+            children: <Widget>[
+              TextBtn('ダウンロード', icon: 'download',
+                  onTap: () => widget.onDownload('${media.url(cut.url)}?download=1')),
+              TextBtn('移動', icon: 'move', onTap: widget.onMove),
+              TextBtn('削除', icon: 'trash', danger: true, onTap: () async {
+                final bool yes =
+                    await confirm(context, 'このカットを削除しますか。ゴミ箱から戻せます。', '削除');
+                if (!yes || !context.mounted) return;
+                await _run(widget.onDelete, done: 'カットを削除しました', close: true);
+              }),
+            ],
+          ),
+          top: sp.s3,
+          bottom: sp.s4,
+        ),
+
+        // 詳しい値。ふだんは畳んでおく。
+        if (_showMeta) ...<Block>[
+          Block(_meta(t, c, cut), top: sp.s2, bottom: sp.s2),
+          Block(
+            Row(children: <Widget>[
+              Expanded(child: _NoteField(controller: _note)),
+              SizedBox(width: sp.s3),
+              TextBtn('保存', onTap: () => _run(() => widget.onNote(_note.text.trim()),
+                  done: 'メモを保存しました')),
+            ]),
+            top: sp.s2,
+            bottom: sp.s2,
+          ),
+        ],
+
+        // CSS: .reactions { margin: var(--s3) 0 }
+        Block(
+          Wrap(
+            spacing: sp.s2,
+            children: <String>['👍', '🎉', '😂', '🥺', '🔥'].map((String e) {
+              final int n = _detail?.reactions[e] ?? 0;
+              final bool on = _detail?.mine.contains(e) ?? false;
+              return GestureDetector(
+                onTap: () => _run(() => widget.onReact(e)),
+                behavior: HitTestBehavior.opaque,
+                // ★ alignment は付けない。付けると幅いっぱいに広がって
+                //   絵文字が縦に1つずつ並んでしまう（実機で踏んだ）。
+                child: Container(
+                  constraints: const BoxConstraints(minHeight: 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  color: on ? c.paper2 : null,
+                  child: Center(
+                    widthFactor: 1,
+                    child: Opacity(
+                      opacity: on ? 1 : .45,
+                      child: Text(n > 0 ? '$e $n' : e, style: t.body),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          top: sp.s3,
+          bottom: sp.s3,
+        ),
+
+        // コメント
+        Block(const SheetHead('コメント'), top: sp.s5, bottom: sp.s2),
+        if (_detail != null && _detail!.comments.isEmpty)
+          Block(Text('まだコメントはありません。', style: t.small), top: 0, bottom: sp.s2),
+        for (final Comment cm in _detail?.comments ?? <Comment>[])
+          Block(
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Text(upper(cm.author), style: t.eyebrow.copyWith(fontSize: 11)),
+                      Text(cm.body, style: t.body.copyWith(fontSize: 14)),
+                    ],
+                  ),
+                ),
+                MiniBtn('消す', onTap: () => _run(() => widget.onDeleteComment(cm.id))),
+              ],
+            ),
+            top: sp.s1,
+            bottom: sp.s1,
+          ),
+        Block(SheetRow(children: <Widget>[
+          SheetField(hint: 'コメントを書く', width: 149, controller: _comment),
+          PrimaryBtn('送信', onTap: () {
+            final String text = _comment.text.trim();
+            if (text.isEmpty) return;
+            _comment.clear();
+            _run(() => widget.onComment(text));
+          }),
+        ]), top: sp.s2, bottom: sp.s2),
+      ]),
+    );
+  }
+
+  Media get media => widget.media;
+
+  /// CSS: .kv — 左に薄い見出し、右に値。囲まない。
+  Widget _meta(Typo t, Palette c, Cut cut) {
+    final CutDetail? d = _detail;
+    final DateTime at = cut.localTime;
+    final int tz = -cut.tzOffset ~/ 60;
+    final List<List<String>> rows = <List<String>>[
+      <String>['撮影日時', '${at.year}/${at.month}/${at.day} ${_two(at.hour)}:${_two(at.minute)}'],
+      <String>['日付', '${cut.localDate}（UTC${tz >= 0 ? '+' : ''}$tz）'],
+      <String>['撮った人', cut.author ?? '—'],
+      <String>['種類', cut.kind == 'photo' ? '写真' : '動画${d == null || d.mime.isEmpty ? '' : '（${d.mime}）'}'],
+      <String>['タグ', (d?.tags ?? '').isEmpty ? '—' : d!.tags],
+      <String>['長さ', cut.durationMs > 0 ? '${(cut.durationMs / 1000).toStringAsFixed(1)} 秒' : '—'],
+      <String>['解像度', d == null || d.width == 0 ? '—' : '${d.width} × ${d.height}'],
+      <String>['カメラ', d?.cameraName ?? '—'],
+      <String>['撮影方法', d?.sourceName ?? '—'],
+      <String>['サイズ', d == null || d.bytes == 0 ? '—' : d.size],
+      <String>['チェックサム', (d?.checksum ?? '').isEmpty ? '—' : '${d!.checksum.substring(0, 16)}…'],
+      <String>[
+        '撮った場所',
+        cut.lat == null || cut.lon == null
+            ? '—'
+            : '${cut.lat!.toStringAsFixed(5)}, ${cut.lon!.toStringAsFixed(5)}'
+                '${d?.placeAccuracy == null ? '' : '（だいたい${d!.placeAccuracy!.round()}m）'}',
+      ],
+      <String>['ID', cut.id],
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: rows
+          .map((List<String> kv) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    SizedBox(
+                      width: 120,
+                      child: Text(upper(kv[0]),
+                          style: t.small.copyWith(fontSize: 11, letterSpacing: 1.32)),
+                    ),
+                    Expanded(
+                      child: Text(kv[1], style: t.body.copyWith(fontSize: 13)),
+                    ),
+                  ],
+                ),
+              ))
+          .toList(),
+    );
+  }
+}
+
+/// メモを直す欄
+class _NoteField extends StatelessWidget {
+  const _NoteField({required this.controller});
+
+  final TextEditingController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final Palette c = colorsOf(context);
+    return Container(
+      height: 36.8,
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.hair))),
+      child: TextField(
+        controller: controller,
+        style: Typo(c).panelInput,
+        cursorColor: c.ink,
+        decoration: InputDecoration(
+          isDense: true,
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.zero,
+          hintText: 'メモ',
+          hintStyle: Typo(c).panelInput.copyWith(color: c.mute),
+        ),
+      ),
+    );
+  }
 }
 
 /// うまくいったら閉じ、だめならその訳を出す——という繰り返しを1つにまとめたもの。
