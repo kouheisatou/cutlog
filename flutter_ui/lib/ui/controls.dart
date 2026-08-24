@@ -222,12 +222,7 @@ class Avatar extends StatelessWidget {
       decoration: BoxDecoration(color: c.paper2, shape: BoxShape.circle),
       clipBehavior: Clip.antiAlias,
       child: (url ?? '').isNotEmpty
-          ? CachedNetworkImage(
-              imageUrl: url!,
-              httpHeaders: headers,
-              width: size,
-              height: size,
-              fit: BoxFit.cover)
+          ? Tn(url!, headers: headers, width: size, height: size)
           : Text(
               initial,
               style: TextStyle(
@@ -244,6 +239,38 @@ class Avatar extends StatelessWidget {
 }
 
 /// CSS: .panel-row select — 選ぶところ。下の1本だけで示し、右に小さな印を置く。
+/// CSS: img.tn — 読み終わってからふわっと出す。
+/// ★ 作った瞬間から出すと、絵が入るまでの一瞬だけ下地が見え、
+///   並びを作り直すたびにちらつく。web と同じ .18s で重ねる。
+class Tn extends StatelessWidget {
+  const Tn(
+    this.url, {
+    super.key,
+    required this.headers,
+    this.fit = BoxFit.cover,
+    this.width,
+    this.height,
+  });
+
+  final String url;
+  final Map<String, String> headers;
+  final BoxFit fit;
+  final double? width;
+  final double? height;
+
+  @override
+  Widget build(BuildContext context) => CachedNetworkImage(
+        imageUrl: url,
+        httpHeaders: headers,
+        fit: fit,
+        width: width,
+        height: height,
+        fadeInDuration: const Duration(milliseconds: 180),
+        // 出しかけのものを消しながら重ねると、下地の白がちらつく
+        fadeOutDuration: Duration.zero,
+      );
+}
+
 class Picker extends StatelessWidget {
   const Picker({super.key, required this.value, required this.width, this.onTap});
 

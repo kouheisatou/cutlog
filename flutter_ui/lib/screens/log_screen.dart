@@ -23,6 +23,7 @@ class LogScreen extends StatefulWidget {
     this.members = const <String>[],
     this.query = '',
     this.author = '',
+    this.tag = '',
     this.onFilter,
   });
 
@@ -37,9 +38,10 @@ class LogScreen extends StatefulWidget {
 
   final String query;
   final String author;
+  final String tag;
 
   /// メモの語と投稿者で絞り込む
-  final void Function(String q, String author)? onFilter;
+  final void Function(String q, String author, String tag)? onFilter;
 
   @override
   State<LogScreen> createState() => _LogScreenState();
@@ -54,7 +56,7 @@ class _LogScreenState extends State<LogScreen> {
   void _onTyped(String v) {
     _typing?.cancel();
     _typing = Timer(const Duration(milliseconds: 350), () {
-      widget.onFilter?.call(v.trim(), widget.author);
+      widget.onFilter?.call(v.trim(), widget.author, widget.tag);
     });
   }
 
@@ -74,7 +76,50 @@ class _LogScreenState extends State<LogScreen> {
                     label: name,
                     on: name == '全員' ? widget.author.isEmpty : name == widget.author,
                     onTap: () {
-                      widget.onFilter!(_q.text.trim(), name == '全員' ? '' : name);
+                      widget.onFilter!(_q.text.trim(), name == '全員' ? '' : name, widget.tag);
+                      Navigator.of(context).pop();
+                    },
+                  ),
+                  top: sp.s1,
+                  bottom: sp.s1,
+                ),
+            ], outer: false);
+          },
+        ),
+      ],
+    );
+  }
+
+  /// このログで実際に使われている札。
+  /// ★ 札で絞っている間は作り直さない。候補が自分自身に縮んでしまう。
+  List<String> _tagOptions = <String>[];
+
+  List<String> get _tags {
+    if (widget.tag.isEmpty) {
+      _tagOptions = (widget.cuts.expand((Cut c) => c.tags).toSet().toList()..sort());
+    }
+    return _tagOptions;
+  }
+
+  Future<void> _pickTag() async {
+    if (widget.onFilter == null) return;
+    final List<String> options = _tags;
+    await openSheet<void>(
+      context,
+      children: <Widget>[
+        Builder(
+          builder: (BuildContext context) {
+            final Space sp = spaceOf(context);
+            return CssColumn(<Block>[
+              Block(const SheetTitle('タグ'), bottom: sp.s1),
+              for (final String name in <String>['すべて', ...options])
+                Block(
+                  _Choice(
+                    label: name,
+                    on: name == 'すべて' ? widget.tag.isEmpty : name == widget.tag,
+                    onTap: () {
+                      widget.onFilter!(_q.text.trim(), widget.author,
+                          name == 'すべて' ? '' : name);
                       Navigator.of(context).pop();
                     },
                   ),
@@ -186,6 +231,24 @@ class _LogScreenState extends State<LogScreen> {
                   ),
                 ),
               ),
+              // 札で絞る。使われている札がひとつも無いログでは出さない。
+              if (_tags.isNotEmpty || widget.tag.isNotEmpty) ...<Widget>[
+                SizedBox(width: sp.s3),
+                GestureDetector(
+                  onTap: _pickTag,
+                  behavior: HitTestBehavior.opaque,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Text(widget.tag.isEmpty ? 'タグ' : '#${widget.tag}',
+                          style: Typo.of(context).body
+                              .copyWith(fontSize: 13, color: colorsOf(context).mute)),
+                      const SizedBox(width: 4),
+                      Ic('next', size: 11, color: colorsOf(context).mute),
+                    ],
+                  ),
+                ),
+              ],
               SizedBox(width: sp.s3),
               GestureDetector(
                 onTap: _pickAuthor,

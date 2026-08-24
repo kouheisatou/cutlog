@@ -4,7 +4,6 @@
 // ★ 近いピンは束ねる。束ねたものを押したときは、寄るのではなく中身の一覧へ進む。
 import 'dart:math' as math;
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -13,6 +12,7 @@ import '../data/media.dart';
 import '../data/models.dart';
 import '../design/text.dart';
 import '../design/tokens.dart';
+import '../ui/controls.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({
@@ -187,7 +187,7 @@ class _Pin extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: cut.thumbUrl == null
               ? null
-              : CachedNetworkImage(imageUrl: media.url(cut.thumbUrl!), httpHeaders: media.headers, fit: BoxFit.cover),
+              : Tn(media.url(cut.thumbUrl!), headers: media.headers),
         ),
         if (count > 1)
           Positioned(

@@ -58,6 +58,9 @@ class _CaptureScreenState extends State<CaptureScreen> with SingleTickerProvider
   double _zoom = 1;
   double _zoomMin = 1;
   double _zoomMax = 4;
+
+  /// 指を置いたときの倍率。広げた比をこれに掛ける。
+  double _pinchFrom = 1;
   bool _busy = false;
 
   bool get _recording => _ring.isAnimating;
@@ -165,17 +168,26 @@ class _CaptureScreenState extends State<CaptureScreen> with SingleTickerProvider
       child: Stack(
         children: <Widget>[
           // CSS: .cam-stage — 撮れる範囲をそのまま見せる（縦持ちでは上下に黒が残る）
+          // ★ 指を広げても寄れるようにする。下のつまみと同じ値を動かすので、
+          //   どちらで変えても表示は一致する。
           Positioned.fill(
-            child: ColoredBox(
-              color: camBackdrop,
-              child: _cam == null || !_cam!.value.isInitialized
-                  ? const SizedBox.expand()
-                  : Center(
-                      child: AspectRatio(
-                        aspectRatio: _cam!.value.aspectRatio,
-                        child: CameraPreview(_cam!),
+            child: GestureDetector(
+              onScaleStart: (ScaleStartDetails _) => _pinchFrom = _zoom,
+              onScaleUpdate: (ScaleUpdateDetails d) {
+                if (d.pointerCount < 2) return;
+                _setZoom(_pinchFrom * d.scale);
+              },
+              child: ColoredBox(
+                color: camBackdrop,
+                child: _cam == null || !_cam!.value.isInitialized
+                    ? const SizedBox.expand()
+                    : Center(
+                        child: AspectRatio(
+                          aspectRatio: _cam!.value.aspectRatio,
+                          child: CameraPreview(_cam!),
+                        ),
                       ),
-                    ),
+              ),
             ),
           ),
 

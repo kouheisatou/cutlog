@@ -6,9 +6,9 @@ import 'dart:async' show unawaited;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
-import 'package:url_launcher/url_launcher.dart';
 
 import 'data/api.dart';
+import 'data/save.dart';
 import 'package:image_picker/image_picker.dart' show ImagePicker, ImageSource;
 
 import 'data/media.dart';
@@ -109,8 +109,13 @@ class _HostState extends State<_Host> {
   String _logFilter = '';                 // ログ一覧の絞り込み
   String _logQuery = '';                  // カレンダーのメモ検索
   String _logAuthor = '';                 // カレンダーの投稿者の絞り込み
+  String _logTag = '';                    // カレンダーの札の絞り込み
+
+  /// まとめ動画の見た目。前に使ったものをサーバが覚えている。
+  Map<String, dynamic>? _renderStyle;
   List<Cut> _mapPick = <Cut>[];           // 地図で押した場所のカット
-  String _cutFilter = '';                 // カット一覧の絞り込み
+  String _cutFilter = '';                 // カット一覧の絞り込み（メモ）
+  String _cutAuthor = '';                 // カット一覧の絞り込み（撮った人）
 
   @override
   void initState() {
@@ -139,6 +144,7 @@ class _HostState extends State<_Host> {
         _me = Me.fromJson(mine['user'] as Map<String, dynamic>);
         _reminder = Reminder.fromJson(mine['reminder'] as Map<String, dynamic>?);
         _defaultLogId = mine['defaultLogId'] as String?;
+      _renderStyle = mine['renderStyle'] as Map<String, dynamic>?;
         _config = got[2]! as Map<String, dynamic>;
         _cuts = got[3]! as List<Cut>;
       });
@@ -197,7 +203,7 @@ class _HostState extends State<_Host> {
         case 'logs-search':
           openLogSearchSheet(context, initial: '', onSearch: (String _) {});
         case 'all-search':
-          openSearchSheet(context, initial: '', onSearch: (String _) {});
+          openSearchSheet(context, initial: '', onSearch: (String _, String _) {});
         case 'cut':
           if (_cuts.isNotEmpty) _sheetCut(context, _cuts.first);
       }
@@ -292,8 +298,10 @@ class _HostState extends State<_Host> {
         onDeleteComment: (String id) => _api.deleteComment(id),
         // ★ 端末の外へ渡す。アプリの中で保存先を選ばせるより、
         //   端末が持っている仕組みに任せたほうが迷わない。
-        onDownload: (String url) => launchUrl(Uri.parse(url),
-            mode: LaunchMode.externalApplication),
+        onDownload: (String url) async {
+          final String? bad = await Saver(_api).save(url, _fileNameOf(cut));
+          if (bad != null && context.mounted) toast(context, bad);
+        },
         onMove: () => openMoveSheet(
           context,
           logs: _logs!,
@@ -332,22 +340,35 @@ class _HostState extends State<_Host> {
             },
           ),
           onImport: () async {
-            final XFile? got = await ImagePicker().pickVideo(source: ImageSource.gallery);
-            if (got == null || !page.mounted) return;
-            _openReview(dest, got, 0, fromFile: true);
+            // まとめて取り込める。1本ずつ確かめてもらい、途中でやめたらそこで止める。
+            final List<XFile> got = await ImagePicker().pickMultipleMedia();
+            if (got.isEmpty || !page.mounted) return;
+            for (final XFile f in got) {
+              if (!mounted) return;
+              final bool saved =
+                  await _openReview(dest, f, 0, fromFile: true, closeAll: false);
+              if (!saved) return;
+            }
+            if (mounted) {
+              Navigator.of(context).popUntil((Route<dynamic> r) => r.isFirst);
+            }
           },
         ),
       ),
     ));
   }
 
-  void _openReview(LogItem dest, XFile file, int durationMs, {bool fromFile = false}) {
-    Navigator.of(context).push(MaterialPageRoute<void>(
+  /// 撮った（取り込んだ）ものを確かめる画面。しまったら true。
+  /// ★ [closeAll] が false のときは、この画面だけ閉じて撮影の画面には戻さない。
+  ///   まとめて取り込むときに、1本ごとに最初まで戻ってしまうのを避ける。
+  Future<bool> _openReview(LogItem dest, XFile file, int durationMs,
+      {bool fromFile = false, bool closeAll = true}) async {
+    final bool? saved = await Navigator.of(context).push<bool>(MaterialPageRoute<bool>(
       builder: (BuildContext sheet) => ReviewScreen(
         file: file,
         destination: dest.name,
-        onRetake: () => Navigator.of(sheet).maybePop(),
-        onClose: () => Navigator.of(sheet).maybePop(),
+        onRetake: () => Navigator.of(sheet).pop(false),
+        onClose: () => Navigator.of(sheet).pop(false),
         onSave: (String note) async {
           final DateTime now = DateTime.now();
           // 撮った場所。取れなくても止めない。
@@ -356,9 +377,9 @@ class _HostState extends State<_Host> {
             logId: dest.id,
             bytes: await file.readAsBytes(),
             filename: file.name.isEmpty ? 'cut.mp4' : file.name,
-            mime: file.name.endsWith('.webm') ? 'video/webm' : 'video/mp4',
+            mime: _mimeOf(file.name),
             meta: <String, dynamic>{
-              'kind': 'video',
+              'kind': _mimeOf(file.name).startsWith('image/') ? 'photo' : 'video',
               if (durationMs > 0) 'durationMs': durationMs,
               'takenAt': now.toUtc().toIso8601String(),
               'tzOffset': -now.timeZoneOffset.inMinutes,
@@ -371,13 +392,29 @@ class _HostState extends State<_Host> {
           );
           if (bad != null) return bad;
           await _reload();
-          if (!mounted) return null;
-          // 確かめる画面と撮影の画面を、まとめて畳む
-          Navigator.of(context).popUntil((Route<dynamic> r) => r.isFirst);
+          if (!sheet.mounted) return null;
+          if (closeAll) {
+            // 確かめる画面と撮影の画面を、まとめて畳む
+            Navigator.of(sheet).popUntil((Route<dynamic> r) => r.isFirst);
+          } else {
+            Navigator.of(sheet).pop(true);
+          }
           return null;
         },
       ),
     ));
+    return saved ?? false;
+  }
+
+  /// 名前の末尾から中身の型を決める。分からなければ動画として扱う。
+  String _mimeOf(String name) {
+    final String n = name.toLowerCase();
+    if (n.endsWith('.webm')) return 'video/webm';
+    if (n.endsWith('.mov')) return 'video/quicktime';
+    if (n.endsWith('.png')) return 'image/png';
+    if (n.endsWith('.heic')) return 'image/heic';
+    if (n.endsWith('.jpg') || n.endsWith('.jpeg')) return 'image/jpeg';
+    return 'video/mp4';
   }
 
   /// ゴミ箱。消したカットを戻せる。
@@ -440,6 +477,7 @@ class _HostState extends State<_Host> {
       target.id,
       query: _logQuery.isEmpty ? null : _logQuery,
       author: id,
+      tag: _logTag.isEmpty ? null : _logTag,
     );
     if (mounted) setState(() => _logCuts = got);
   }
@@ -452,6 +490,7 @@ class _HostState extends State<_Host> {
       _me = Me.fromJson(mine['user'] as Map<String, dynamic>);
       _reminder = Reminder.fromJson(mine['reminder'] as Map<String, dynamic>?);
       _defaultLogId = mine['defaultLogId'] as String?;
+      _renderStyle = mine['renderStyle'] as Map<String, dynamic>?;
     });
   }
 
@@ -504,10 +543,19 @@ class _HostState extends State<_Host> {
       toast(context, 'この日にはカットがありません');
       return;
     }
+    // 前に使った見た目を出しておく。触らずに作ることもできる。
+    final Map<String, dynamic>? style = await openRenderSheet(
+      context,
+      style: _renderStyle ?? <String, dynamic>{},
+    );
+    if (style == null || !context.mounted) return;
+    _renderStyle = style;
+
     final (String? bad, String? jobId) = await _api.startRender(
       logId: (_log ?? _target).id,
       cutIds: day.map((Cut c) => c.id).toList(),
       label: _day ?? 'まとめ',
+      style: style,
     );
     if (!context.mounted) return;
     if (bad != null || jobId == null) {
@@ -527,7 +575,7 @@ class _HostState extends State<_Host> {
           if (!context.mounted) return;
           toast(context, '動画ができました');
           if (url != null) {
-            await launchUrl(Uri.parse(_api.mediaUrl(url)), mode: LaunchMode.externalApplication);
+            await Saver(_api).save(_api.mediaUrl(url), 'cutlog_${_day ?? 'matome'}.mp4');
           }
           return;
         }
@@ -575,6 +623,36 @@ class _HostState extends State<_Host> {
     }
     await _reload();
     if (context.mounted) toast(context, '$done件を削除しました');
+  }
+
+  /// 持ち出すときの名前。中身に合った拡張子を付けないと、開けないことがある。
+  String _fileNameOf(Cut cut) =>
+      'cutlog_${cut.id}.${cut.kind == 'photo' ? 'jpg' : 'mp4'}';
+
+  /// まとめて持ち出す。
+  /// ★ カットはログをまたいで選べるが、書き出しはログ単位でしか作れない。
+  ///   ログごとに分けて、それぞれ1つの zip にする。
+  Future<void> _exportMany(BuildContext context, List<Cut> picked) async {
+    final Map<String, List<String>> byLog = <String, List<String>>{};
+    for (final Cut c in picked) {
+      byLog.putIfAbsent(c.logId, () => <String>[]).add(c.id);
+    }
+
+    if (context.mounted) toast(context, '書き出しています…');
+    int done = 0;
+    for (final MapEntry<String, List<String>> e in byLog.entries) {
+      final String? bad = await Saver(_api).save(
+        _api.exportUrl(e.key, e.value),
+        'cutlog_${e.key}.zip',
+      );
+      if (bad == null) {
+        done += e.value.length;
+      } else if (context.mounted) {
+        toast(context, bad);
+        return;
+      }
+    }
+    if (context.mounted) toast(context, '$done件を書き出しました');
   }
 
   /// まとめて移す
@@ -793,10 +871,12 @@ class _HostState extends State<_Host> {
                 .toList(),
             query: _logQuery,
             author: _logAuthor,
-            onFilter: (String q, String author) async {
+            tag: _logTag,
+            onFilter: (String q, String author, String tag) async {
               setState(() {
                 _logQuery = q;
                 _logAuthor = author;
+                _logTag = tag;
               });
               await _reloadLogCuts();
             },
@@ -923,13 +1003,19 @@ class _HostState extends State<_Host> {
           builder: (BuildContext context) => AllScreen(
             cuts: _visibleCuts,
             media: _media,
-            filter: _cutFilter,
+            filter: _cutFilterLabel,
             onOpen: (Cut c) => _sheetCut(context, c),
             onSearch: () => openSearchSheet(
               context,
               initial: _cutFilter,
-              onSearch: (String q) => setState(() => _cutFilter = q),
+              initialAuthor: _cutAuthor,
+              authors: _authors,
+              onSearch: (String q, String author) => setState(() {
+                _cutFilter = q;
+                _cutAuthor = author;
+              }),
             ),
+            onExport: (List<Cut> picked) => _exportMany(context, picked),
             onDelete: (List<Cut> picked) => _deleteMany(context, picked),
             onMove: (List<Cut> picked) => _moveMany(context, picked),
           ),
@@ -947,9 +1033,38 @@ class _HostState extends State<_Host> {
         .toList();
   }
 
-  List<Cut> get _visibleCuts => _cutFilter.isEmpty
-      ? _cuts
-      : _cuts.where((Cut c) => (c.note ?? '').contains(_cutFilter)).toList();
+  List<Cut> get _visibleCuts => _cuts
+      .where((Cut c) => _cutFilter.isEmpty || (c.note ?? '').contains(_cutFilter))
+      .where((Cut c) => _cutAuthor.isEmpty || c.userId == _cutAuthor)
+      .toList();
+
+  /// 撮った人の顔ぶれ。同じ人は一度だけ、出てきた順に並べる。
+  /// ★ 絞ったあとの一覧から作ると候補が自分自身に縮むので、必ず全部から拾う。
+  List<({String id, String label})> get _authors {
+    final Map<String, String> seen = <String, String>{};
+    for (final Cut c in _cuts) {
+      if (c.userId.isEmpty) continue;
+      seen.putIfAbsent(c.userId, () => (c.author ?? '').isEmpty ? c.userId : c.author!);
+    }
+    return seen.entries
+        .map((MapEntry<String, String> e) => (id: e.key, label: e.value))
+        .toList();
+  }
+
+  /// 帯に出す文言。web の paintAllFilter と同じ組み立て。
+  String get _cutFilterLabel {
+    final String who = _cutAuthor.isEmpty
+        ? ''
+        : _authors
+                .where((({String id, String label}) a) => a.id == _cutAuthor)
+                .map((({String id, String label}) a) => a.label)
+                .firstOrNull ??
+            '';
+    return <String>[
+      if (_cutFilter.isNotEmpty) 'メモ「$_cutFilter」',
+      if (who.isNotEmpty) '$who のぶん',
+    ].join('\u3000');
+  }
 }
 
 /// つないでいる最中。

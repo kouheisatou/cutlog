@@ -1,10 +1,11 @@
 // 下からせり上がる札の中身。器（SheetPanel）は同じで、並べるものだけが違う。
 // ★ 閉じ方は標準の振る舞いに任せる。ここでは「何を並べるか」と「押したら何をするか」だけを書く。
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 
 import '../data/media.dart';
 import '../data/models.dart';
+import '../design/icons.dart';
 import '../design/text.dart';
 import '../design/tokens.dart';
 import '../ui/controls.dart';
@@ -91,33 +92,137 @@ Future<void> openLogSearchSheet(
   );
 }
 
-/// 検索（カット一覧から開く）
-Future<void> openSearchSheet(
+/// ひとつ選ぶだけの小さな板。Picker から呼ぶ。
+/// ★ 選び直せる顔ぶれは呼ぶ側が決める。ここは並べて返すだけ。
+Future<String?> openChoiceSheet(
   BuildContext context, {
-  required String initial,
-  required void Function(String q) onSearch,
+  required String title,
+  required List<({String id, String label})> options,
+  required String current,
 }) {
-  final TextEditingController q = TextEditingController(text: initial);
-
-  return openSheet<void>(
+  return openSheet<String>(
     context,
     children: <Widget>[
       Builder(
         builder: (BuildContext context) {
           final Space sp = spaceOf(context);
           return CssColumn(<Block>[
+            Block(SheetTitle(title), bottom: sp.s1),
+            for (final ({String id, String label}) o in options)
+              Block(
+                _Choice(
+                  label: o.label,
+                  on: o.id == current,
+                  onTap: () => Navigator.of(context).pop(o.id),
+                ),
+                top: sp.s1,
+                bottom: sp.s1,
+              ),
+          ], outer: false);
+        },
+      ),
+    ],
+  );
+}
+
+/// 選べる一行。選んでいるものには印を付ける。
+class _Choice extends StatelessWidget {
+  const _Choice({required this.label, required this.on, this.onTap});
+
+  final String label;
+  final bool on;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Palette c = colorsOf(context);
+    final Typo t = Typo(c);
+
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        height: 44,
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: t.body.copyWith(color: on ? c.ink : c.inkSoft)),
+            ),
+            if (on) Ic('check', size: 16, color: c.ink),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 検索（カット一覧から開く）
+Future<void> openSearchSheet(
+  BuildContext context, {
+  required String initial,
+  required void Function(String q, String author) onSearch,
+  List<({String id, String label})> authors = const <({String id, String label})>[],
+  String initialAuthor = '',
+}) {
+  final TextEditingController q = TextEditingController(text: initial);
+  String author = initialAuthor;
+
+  String nameOf(String id) =>
+      authors.where((({String id, String label}) a) => a.id == id).map((({String id, String label}) a) => a.label).firstOrNull ?? '全員';
+
+  return openSheet<void>(
+    context,
+    children: <Widget>[
+      StatefulBuilder(
+        builder: (BuildContext context, void Function(VoidCallback) redraw) {
+          final Space sp = spaceOf(context);
+          return CssColumn(<Block>[
             Block(const SheetTitle('検索'), bottom: sp.s1),
             Block(_LabeledRow(label: 'メモ', hint: 'メモのワードを入力してください', fontSize: 16, controller: q),
                 top: sp.s2, bottom: sp.s2),
-            Block(const _LabeledRow(label: 'アップロードした人', hint: '全員', width: 62),
-                top: sp.s2, bottom: sp.s2),
+            // 撮った人で絞る。顔ぶれは、絞っていないときの一覧から拾ったもの。
+            Block(
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: <Widget>[
+                  Text(upper('アップロードした人'), style: Typo.of(context).panelLabel),
+                  SizedBox(width: sp.s2),
+                  Expanded(
+                    child: Picker(
+                      value: nameOf(author),
+                      width: 120,
+                      onTap: authors.isEmpty
+                          ? null
+                          : () async {
+                              final String? got = await openChoiceSheet(
+                                context,
+                                title: 'アップロードした人',
+                                current: author,
+                                options: <({String id, String label})>[
+                                  (id: '', label: '全員'),
+                                  ...authors,
+                                ],
+                              );
+                              if (got != null) redraw(() => author = got);
+                            },
+                    ),
+                  ),
+                ],
+              ),
+              top: sp.s2,
+              bottom: sp.s2,
+            ),
             Block(SheetActions(children: <Widget>[
               TextBtn('絞り込みをリセット', onTap: () {
-                onSearch('');
+                onSearch('', '');
                 Navigator.of(context).pop();
               }),
               PrimaryBtn('検索', onTap: () {
-                onSearch(q.text.trim());
+                onSearch(q.text.trim(), author);
                 Navigator.of(context).pop();
               }),
             ]), top: sp.s5),
@@ -286,6 +391,7 @@ class _CutBodyState extends State<_CutBody> {
   void dispose() {
     _comment.dispose();
     _note.dispose();
+    _video?.dispose();
     super.dispose();
   }
 
@@ -318,6 +424,38 @@ class _CutBodyState extends State<_CutBody> {
 
   static String _two(int n) => n.toString().padLeft(2, '0');
 
+  /// 押されてから作る。押されるまでは作らない。
+  VideoPlayerController? _video;
+  bool _rolling = false;
+
+  Future<void> _toggleVideo() async {
+    final Cut cut = _detail?.cut ?? widget.cut;
+    if (_video == null) {
+      final VideoPlayerController next = VideoPlayerController.networkUrl(
+        Uri.parse(media.url(cut.url)),
+        httpHeaders: media.headers,
+      );
+      _video = next;
+      await next.initialize();
+      if (!mounted) {
+        await next.dispose();
+        return;
+      }
+      next.addListener(() {
+        if (mounted) setState(() {});
+      });
+      await next.play();
+      setState(() => _rolling = true);
+      return;
+    }
+    if (_video!.value.isPlaying) {
+      await _video!.pause();
+    } else {
+      await _video!.play();
+    }
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final Palette c = colorsOf(context);
@@ -340,13 +478,43 @@ class _CutBodyState extends State<_CutBody> {
             child: Container(
               clipBehavior: Clip.hardEdge,
               decoration: BoxDecoration(color: c.paper2),
-              child: cut.thumbUrl == null
-                  ? null
-                  : CachedNetworkImage(
-                      imageUrl: media.url(cut.thumbUrl!),
-                      httpHeaders: media.headers,
-                      fit: BoxFit.contain,
+              // ★ 写真は敷いたまま。動画は押されてから流す。
+              //   札を開いた瞬間に全部読みに行くと、一覧を見て回るだけで重くなる。
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  if (cut.thumbUrl != null && !_rolling)
+                    Tn(media.url(cut.thumbUrl!),
+                        headers: media.headers, fit: BoxFit.contain),
+                  if (_video != null && _video!.value.isInitialized)
+                    Center(
+                      child: AspectRatio(
+                        aspectRatio: _video!.value.aspectRatio,
+                        child: VideoPlayer(_video!),
+                      ),
                     ),
+                  if (cut.kind != 'photo')
+                    GestureDetector(
+                      onTap: _toggleVideo,
+                      behavior: HitTestBehavior.opaque,
+                      child: Center(
+                        child: _rolling && (_video?.value.isPlaying ?? false)
+                            ? const SizedBox.shrink()
+                            : Container(
+                                width: 56,
+                                height: 56,
+                                alignment: Alignment.center,
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Color(0x8C000000),
+                                ),
+                                child: Ic('play',
+                                    size: 22, color: const Color(0xFFFFFFFF)),
+                              ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -710,6 +878,115 @@ Future<void> openSharesSheet(
                   top: sp.s1,
                   bottom: sp.s1,
                 ),
+          ], outer: false);
+        },
+      ),
+    ],
+  );
+}
+
+
+/// まとめ動画の見た目。
+/// ★ 元の設定をまるごと預かって、変えたところだけ差し替えて返す。
+///   ここに出していない細かい値（色や置き場所）を既定に戻さないため。
+Future<Map<String, dynamic>?> openRenderSheet(
+  BuildContext context, {
+  required Map<String, dynamic> style,
+}) {
+  final Map<String, dynamic> draft = <String, dynamic>{...style};
+
+  Map<String, dynamic> part(String key) =>
+      <String, dynamic>{...((draft[key] as Map<String, dynamic>?) ?? <String, dynamic>{})};
+
+  return openSheet<Map<String, dynamic>>(
+    context,
+    children: <Widget>[
+      StatefulBuilder(
+        builder: (BuildContext context, void Function(VoidCallback) redraw) {
+          final Space sp = spaceOf(context);
+
+          Widget pick(String label, String value, List<({String id, String label})> options,
+              void Function(String) apply) {
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: <Widget>[
+                Text(upper(label), style: Typo.of(context).panelLabel),
+                SizedBox(width: sp.s2),
+                Expanded(
+                  child: Picker(
+                    value: options
+                            .where((({String id, String label}) o) => o.id == value)
+                            .map((({String id, String label}) o) => o.label)
+                            .firstOrNull ??
+                        value,
+                    width: 140,
+                    onTap: () async {
+                      final String? got = await openChoiceSheet(context,
+                          title: label, current: value, options: options);
+                      if (got != null) redraw(() => apply(got));
+                    },
+                  ),
+                ),
+              ],
+            );
+          }
+
+          Widget flag(String label, String key) {
+            final Map<String, dynamic> m = part(key);
+            return _Choice(
+              label: label,
+              on: m['show'] == true,
+              onTap: () => redraw(() {
+                draft[key] = <String, dynamic>{...m, 'show': m['show'] != true};
+              }),
+            );
+          }
+
+          final int per = (draft['perCutMs'] as num?)?.toInt() ?? 0;
+
+          return CssColumn(<Block>[
+            Block(const SheetTitle('まとめ動画の見た目'), bottom: sp.s1),
+            Block(
+              pick('大きさ', (draft['size'] as String?) ?? 'landscape',
+                  const <({String id, String label})>[
+                    (id: 'landscape', label: '横 1280×720'),
+                    (id: 'portrait', label: '縦 720×1280'),
+                    (id: 'square', label: '正方形 1080×1080'),
+                  ], (String v) => draft['size'] = v),
+              top: sp.s2, bottom: sp.s2),
+            Block(
+              pick('収め方', (draft['fit'] as String?) ?? 'contain',
+                  const <({String id, String label})>[
+                    (id: 'contain', label: '全部入れる（余白あり）'),
+                    (id: 'cover', label: '画面いっぱい（切り抜き）'),
+                  ], (String v) => draft['fit'] = v),
+              top: sp.s2, bottom: sp.s2),
+            Block(
+              pick('1カットの長さ', '$per',
+                  const <({String id, String label})>[
+                    (id: '0', label: '元の長さのまま'),
+                    (id: '2000', label: '2秒'),
+                    (id: '3000', label: '3秒'),
+                    (id: '5000', label: '5秒'),
+                  ], (String v) => draft['perCutMs'] = int.parse(v)),
+              top: sp.s2, bottom: sp.s2),
+            Block(
+              pick('並び', (draft['order'] as String?) ?? 'time',
+                  const <({String id, String label})>[
+                    (id: 'time', label: '撮った順'),
+                    (id: 'reverse', label: '新しい順'),
+                  ], (String v) => draft['order'] = v),
+              top: sp.s2, bottom: sp.s2),
+            Block(Text(upper('焼き込む'), style: Typo.of(context).panelLabel),
+                top: sp.s3, bottom: sp.s1),
+            Block(flag('時刻', 'time'), top: sp.s1, bottom: sp.s1),
+            Block(flag('メモ', 'note'), top: sp.s1, bottom: sp.s1),
+            Block(flag('ログ名', 'logName'), top: sp.s1, bottom: sp.s1),
+            Block(SheetActions(children: <Widget>[
+              TextBtn('やめる', onTap: () => Navigator.of(context).pop()),
+              PrimaryBtn('この見た目で作る', onTap: () => Navigator.of(context).pop(draft)),
+            ]), top: sp.s5),
           ], outer: false);
         },
       ),

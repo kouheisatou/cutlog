@@ -1,7 +1,6 @@
 // ログ一覧（いちばん上の画面）。
 // web の #logsScreen をそのまま写す。行のあいだにヘアラインを引き、
 // 左に見本の絵、右に > を置く——という並びをそのまま持ってくる。
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/widgets.dart';
 
 import '../data/media.dart';
@@ -185,7 +184,7 @@ class _Thumb extends StatelessWidget {
       alignment: Alignment.center,
       child: url == null
           ? Ic(log.isPrivate ? 'lock' : 'film', size: 18, color: c.mute)
-          : CachedNetworkImage(imageUrl: media.url(url), httpHeaders: media.headers, width: 48, height: 48, fit: BoxFit.cover),
+          : Tn(media.url(url), headers: media.headers, width: 48, height: 48),
     );
   }
 }

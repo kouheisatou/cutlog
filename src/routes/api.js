@@ -935,7 +935,20 @@ api.get('/logs/:logId/renders', requireAuth, requireMember, asyncRoute(async (re
 }));
 
 // ── 書き出し ───────────────────────────────────────────
-api.post('/logs/:logId/export', requireAuth, requireMember, asyncRoute(async (req, res) => {
+// ★ GET でも同じものを返す。ブラウザに「保存」を任せるには、
+//   リンクをそのまま踏ませるのがいちばん確実で、POST では踏めない。
+//   中身は本文ではなく問い合わせ文字列から拾う（cutIds はカンマ区切り）。
+api.get('/logs/:logId/export', requireAuth, requireMember, asyncRoute(async (req, res) => {
+  req.body = {
+    cutIds: String(req.query.cutIds || '').split(',').filter(Boolean),
+    includeMetadata: req.query.meta !== '0',
+  };
+  return exportZip(req, res);
+}));
+
+api.post('/logs/:logId/export', requireAuth, requireMember, asyncRoute(exportZip));
+
+async function exportZip(req, res) {
   const cutIds = Array.isArray(req.body?.cutIds) ? req.body.cutIds : [];
   const includeMetadata = req.body?.includeMetadata !== false;
   if (!cutIds.length) return res.status(400).json({ error: 'カットを選んでください' });
@@ -990,7 +1003,7 @@ api.post('/logs/:logId/export', requireAuth, requireMember, asyncRoute(async (re
   await audit(req, 'export', req.params.logId, { count: rows.length, includeMetadata });
   await zip.finalize();
   return undefined;
-}));
+}
 
 // ── 共有リンク ─────────────────────────────────────────
 async function validShare(token) {

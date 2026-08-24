@@ -122,5 +122,18 @@ void main() {
     expect(saved.perDay, 4);
     // 元に戻す
     expect(await api.saveReminder(const Reminder()), isNull);
+
+    // ── 書き出し ────────────────────────────────────
+    // ★ 端末では外のブラウザに鍵が無く 403 になるので、中身をこちらで取ってくる。
+    //   ここが通らないと、選んで書き出しても何も落ちてこない。
+    final List<int>? zip = await api.download(api.exportUrl(home, <String>[cut.id]));
+    expect(zip, isNotNull, reason: 'zip が返るはず');
+    expect(zip!.length, greaterThan(100));
+    // zip は必ず PK で始まる
+    expect(<int>[zip[0], zip[1]], <int>[0x50, 0x4B]);
+
+    // ── まとめ動画の見た目 ──────────────────────────
+    // 渡したものが、そのまま次の既定になる
+    expect((mine['renderStyle'] as Map<String, dynamic>?), isNotNull);
   });
 }

@@ -5,7 +5,7 @@
 //   進み具合の線は映像のすぐ下に1本だけ。行ごとには付けない。
 //   ★行が全部こまかく動くと、どれを見ているのか分からなくなる。
 //     区切りの帯を時間で動かすのをやめたのと同じ理由。
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:video_player/video_player.dart';
 
@@ -13,6 +13,7 @@ import '../data/media.dart';
 import '../data/models.dart';
 import '../design/text.dart';
 import '../design/tokens.dart';
+import '../ui/controls.dart';
 import '../ui/shell.dart';
 
 class DayScreen extends StatefulWidget {
@@ -62,6 +63,11 @@ class _DayScreenState extends State<DayScreen> {
   int _index = 0;          // _playable の中での位置
   String? _playingId;      // いま流しているカット
   bool _muted = false;
+
+  /// 全画面に出しているあいだは true。
+  /// ★ 同じ映像を2か所で描くと、端末によっては絵が片方に取られる。
+  ///   全画面のあいだ、こちらの映像は敷かない。
+  bool _wide = false;
 
   /// 流すのは、出すことにしているカットだけ。
   /// ★ 非表示は時間軸に入れない。行には残るが、つないだ再生からは外れる。
@@ -251,7 +257,44 @@ class _DayScreenState extends State<DayScreen> {
     if (_index >= _playable.length) return const SizedBox.expand();
     final String? thumb = _playable[_index].thumbUrl;
     if (thumb == null) return const SizedBox.expand();
-    return Center(child: CachedNetworkImage(imageUrl: widget.media.url(thumb), httpHeaders: widget.media.headers, fit: BoxFit.contain));
+    return Center(child: Tn(widget.media.url(thumb), headers: widget.media.headers, fit: BoxFit.contain));
+  }
+
+  /// 全画面へ。横向きに寝かせ、帯も時計も消して映像だけにする。
+  /// ★ 横の映像を前提にしているので、開いた時点で横に倒す。
+  ///   閉じたら向きの縛りを解いて、元の見え方へ返す。
+  Future<void> _wideOpen() async {
+    if (_player == null || !_player!.value.isInitialized) return;
+    setState(() => _wide = true);
+
+    await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+    if (mounted) {
+      await Navigator.of(context).push<void>(PageRouteBuilder<void>(
+        opaque: true,
+        barrierColor: camBackdrop,
+        transitionDuration: const Duration(milliseconds: 160),
+        pageBuilder: (BuildContext _, Animation<double> a, Animation<double> _) =>
+            FadeTransition(
+          opacity: a,
+          child: _Wide(
+            player: _player!,
+            progress: () => _progress,
+            onTap: _toggle,
+            onPrev: _prev,
+            onNext: _next,
+          ),
+        ),
+      ));
+    }
+
+    await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    if (mounted) setState(() => _wide = false);
   }
 
   @override
@@ -290,7 +333,7 @@ class _DayScreenState extends State<DayScreen> {
                         ),
                       ),
                     )
-                  : (_player != null && _player!.value.isInitialized
+                  : (_player != null && _player!.value.isInitialized && !_wide
                       ? Center(
                           child: AspectRatio(
                             aspectRatio: _player!.value.aspectRatio,
@@ -324,6 +367,7 @@ class _DayScreenState extends State<DayScreen> {
               const Spacer(),
               IconBtn(_muted ? 'mute' : 'sound', size: 38,
                   label: _muted ? '音を出す' : '音を消す', onTap: _toggleMute),
+              IconBtn('expand', size: 38, label: '全画面', onTap: _wideOpen),
               IconBtn('share', size: 38, label: '共有', onTap: widget.onShare),
               IconBtn('download', size: 38, label: '動画を保存', onTap: widget.onRender),
             ],
@@ -380,6 +424,84 @@ class _DayScreenState extends State<DayScreen> {
         // ★ ここを詰めないと、ドラムと帯のあいだに宙ぶらりんの空白ができる。
         SizedBox(height: 57 + MediaQuery.paddingOf(context).bottom),
       ],
+    );
+  }
+}
+
+/// 全画面。映像と、細い進み具合の線と、押したときだけ出る操作。
+class _Wide extends StatefulWidget {
+  const _Wide({
+    required this.player,
+    required this.progress,
+    required this.onTap,
+    required this.onPrev,
+    required this.onNext,
+  });
+
+  final VideoPlayerController player;
+  final double Function() progress;
+  final VoidCallback onTap;
+  final VoidCallback onPrev;
+  final VoidCallback onNext;
+
+  @override
+  State<_Wide> createState() => _WideState();
+}
+
+class _WideState extends State<_Wide> {
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: camBackdrop,
+      child: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          Center(
+            child: AnimatedBuilder(
+              animation: widget.player,
+              builder: (BuildContext context, Widget? _) => AspectRatio(
+                aspectRatio: widget.player.value.aspectRatio,
+                child: VideoPlayer(widget.player),
+              ),
+            ),
+          ),
+          // 押したところで止める・動かす
+          GestureDetector(behavior: HitTestBehavior.opaque, onTap: widget.onTap),
+          // 下に線を1本
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: AnimatedBuilder(
+              animation: widget.player,
+              builder: (BuildContext context, Widget? _) =>
+                  _ProgressLine(value: widget.progress()),
+            ),
+          ),
+          // 出口と前後送り。映像の邪魔にならないよう隅に寄せる。
+          Positioned(
+            top: 6,
+            right: 6,
+            child: SafeArea(
+              child: IconBtn('collapse', size: 38, label: '全画面をやめる',
+                  color: const Color(0xFFFFFFFF), opacity: .9,
+                  onTap: () => Navigator.of(context).maybePop()),
+            ),
+          ),
+          Positioned(
+            left: 6,
+            bottom: 14,
+            child: SafeArea(
+              child: Row(children: <Widget>[
+                IconBtn('prev', size: 38, label: '前のクリップ',
+                    color: const Color(0xFFFFFFFF), opacity: .9, onTap: widget.onPrev),
+                IconBtn('next', size: 38, label: '次のクリップ',
+                    color: const Color(0xFFFFFFFF), opacity: .9, onTap: widget.onNext),
+              ]),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -479,7 +601,7 @@ class _WheelRow extends StatelessWidget {
             clipBehavior: Clip.hardEdge,
             child: cut.thumbUrl == null
                 ? null
-                : CachedNetworkImage(imageUrl: media.url(cut.thumbUrl!), httpHeaders: media.headers, fit: BoxFit.cover),
+                : Tn(media.url(cut.thumbUrl!), headers: media.headers),
           ),
           SizedBox(width: sp.s2),
           Expanded(

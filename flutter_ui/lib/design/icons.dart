@@ -69,6 +69,8 @@ const Map<String, _Glyph> _glyphs = <String, _Glyph>{
   'sound': _Glyph(<String>['M4 9.5h3.5L12 6v12l-4.5-3.5H4z', 'M15.5 9a4 4 0 0 1 0 6'], round: false),
   'mute': _Glyph(<String>['M4 9.5h3.5L12 6v12l-4.5-3.5H4z', 'M16 10l4 4M20 10l-4 4'], round: false),
   'expand': _Glyph(<String>['M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5']),
+  // 全画面をやめる。expand の矢を内向きに返したもの。
+  'collapse': _Glyph(<String>['M4 9h5V4M20 9h-5V4M4 15h5v5M20 15h-5v5']),
   'comment': _Glyph(<String>['M4 5h16v11H9l-5 4z'], round: false),
   'pin': _Glyph(<String>['M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11z'],
       circles: <List<double>>[<double>[12, 10, 2.6]], round: false),
