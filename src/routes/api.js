@@ -15,6 +15,7 @@ import {
 } from '../auth/index.js';
 import {
   id, inviteCode, hashPassword, verifyPassword, ffprobe, makeThumb, makeSquare, localDateOf, sha256File, asyncRoute,
+  canDrawText,
 } from '../lib/util.js';
 import { enqueue, getJob } from '../jobs/queue.js';
 import { ensurePrivateLog, isPrivate } from '../lib/private-log.js';
@@ -100,7 +101,7 @@ api.use((req, res, next) => {
 });
 
 // ── インスタンスの情報 ──────────────────────────────────
-api.get('/config', (req, res) => {
+api.get('/config', asyncRoute(async (req, res) => {
   res.json({
     instanceName: config.instance.name,
     localAuth: config.auth.localEnabled,
@@ -114,8 +115,10 @@ api.get('/config', (req, res) => {
     mapCredit: config.map.credit,
     maxUploadMb: config.media.maxUploadMb,
     renderEnabled: config.ffmpeg.enabled,
+    // 文字の焼き込みが使えるか。ffmpeg の組み方によっては使えない。
+    burnTextEnabled: config.ffmpeg.enabled && await canDrawText(),
   });
-});
+}));
 
 // 死活。★SELECT 1 はテーブルへ触らないので、DBのファイルが壊れていても通ってしまう。
 // 実際にあるテーブルへ軽く問い合わせて、読めることまで確かめる。

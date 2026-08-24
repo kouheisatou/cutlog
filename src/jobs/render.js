@@ -6,7 +6,7 @@ import fsp from 'node:fs/promises';
 import { db } from '../db/index.js';
 import { config, paths } from '../config.js';
 import { storage, renderStorage } from '../storage/index.js';
-import { run, id } from '../lib/util.js';
+import { run, id, canDrawText } from '../lib/util.js';
 import { registerHandler } from './queue.js';
 import {
   normalizeStyle, scaleFilters, drawTextFile, timeLabel, ffColor, FONT_CANDIDATES,
@@ -53,12 +53,13 @@ async function normalize(cut, outFile, style, stem, index, logName = '') {
   const filters = scaleFilters(style);
   const opts = { fontFile: fontFile() };
   const textFiles = [];
-  if (style.time.show) {
+  const draw = await canDrawText();
+  if (draw && style.time.show) {
     const f = await writeTextFile(stem, `t${index}`, timeLabel(cut, style.time.format));
     textFiles.push(f);
     filters.push(drawTextFile(f, style.time, opts));
   }
-  if (style.note.show && cut.note) {
+  if (draw && style.note.show && cut.note) {
     const f = await writeTextFile(stem, `n${index}`, cut.note.slice(0, 60));
     textFiles.push(f);
     // 時刻と同じ側に置くときは、重ならないように1段ずらす
@@ -70,7 +71,7 @@ async function normalize(cut, outFile, style, stem, index, logName = '') {
     }));
   }
   // ログの題。画面で見えているものと同じ位置に焼き込む。
-  if (style.logName.show && logName) {
+  if (draw && style.logName.show && logName) {
     const f = await writeTextFile(stem, `g${index}`, String(logName).slice(0, 40));
     textFiles.push(f);
     filters.push(drawTextFile(f, style.logName, opts));
@@ -139,7 +140,7 @@ async function renderTimeline(payload) {
 
   const stem = id('rd_');
   const parts = [];
-  if (style.title.show && style.title.text) {
+  if (style.title.show && style.title.text && await canDrawText()) {
     const cover = path.join(paths.tmp, `${stem}_cover.mp4`);
     await titleCard(cover, style, stem);
     parts.push(cover);

@@ -30,6 +30,27 @@ export function verifyPassword(password, stored) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+// 文字の焼き込みが使えるか。
+// ★ drawtext は freetype と一緒に組まれた ffmpeg にしか入っていない。
+//   Homebrew の既定の組み方には入っていないことがあり、そのまま渡すと
+//   「まとめ動画が作れない」だけの結果になる。使えないなら焼き込みを外して、
+//   動画そのものは作る。一度調べたら覚えておく。
+let canDrawCache = null;
+export async function canDrawText() {
+  if (canDrawCache !== null) return canDrawCache;
+  try {
+    const { stdout } = await run(config.ffmpeg.bin, ['-hide_banner', '-filters']);
+    canDrawCache = /^\s*\S+\s+drawtext\s/m.test(stdout);
+  } catch {
+    canDrawCache = false;
+  }
+  if (!canDrawCache) {
+    console.warn('[render] この ffmpeg には drawtext がありません（freetype 無しの組み方）。'
+      + '時刻・メモ・ログ名の焼き込みと表紙は省いて作ります。');
+  }
+  return canDrawCache;
+}
+
 export async function ffprobe(file) {
   try {
     const { stdout } = await run(config.ffmpeg.probe, [

@@ -547,6 +547,7 @@ class _HostState extends State<_Host> {
     final Map<String, dynamic>? style = await openRenderSheet(
       context,
       style: _renderStyle ?? <String, dynamic>{},
+      burnText: (_config['burnTextEnabled'] as bool?) ?? true,
     );
     if (style == null || !context.mounted) return;
     _renderStyle = style;
@@ -565,6 +566,7 @@ class _HostState extends State<_Host> {
     toast(context, '動画を作っています…');
 
     // 5 分見て終わらなければ諦める（延々と見に行かない）
+    int misses = 0;
     for (int i = 0; i < 150; i++) {
       await Future<void>.delayed(const Duration(seconds: 2));
       if (!context.mounted) return;
@@ -575,7 +577,9 @@ class _HostState extends State<_Host> {
           if (!context.mounted) return;
           toast(context, '動画ができました');
           if (url != null) {
-            await Saver(_api).save(_api.mediaUrl(url), 'cutlog_${_day ?? 'matome'}.mp4');
+            final String? kept = await Saver(_api)
+                .save(_api.mediaUrl(url), 'cutlog_${_day ?? 'matome'}.mp4');
+            if (kept != null && context.mounted) toast(context, kept);
           }
           return;
         }
@@ -585,6 +589,11 @@ class _HostState extends State<_Host> {
         }
       } catch (_) {
         // 一度取れなくても、次の回に賭ける
+        misses++;
+        if (misses >= 5) {
+          if (context.mounted) toast(context, '様子を見に行けませんでした');
+          return;
+        }
       }
     }
     if (context.mounted) toast(context, '時間がかかっています。あとで確認してください');

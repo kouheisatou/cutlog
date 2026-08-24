@@ -132,8 +132,34 @@ void main() {
     // zip は必ず PK で始まる
     expect(<int>[zip[0], zip[1]], <int>[0x50, 0x4B]);
 
-    // ── まとめ動画の見た目 ──────────────────────────
-    // 渡したものが、そのまま次の既定になる
+    // ── まとめ動画 ──────────────────────────────────
+    // ★ 様子は {job: {...}} に包まれて返る。包みを開け忘れると
+    //   いつまでも「まだ」のままになり、待ち受けが終わらない。実際にそうなっていた。
     expect((mine['renderStyle'] as Map<String, dynamic>?), isNotNull);
+    final Map<String, dynamic> conf = await api.config();
+    if (conf['renderEnabled'] == true) {
+      final (String? nope, String? jobId) = await api.startRender(
+        logId: home,
+        cutIds: <String>[cut.id],
+        label: '試し',
+        style: mine['renderStyle'] as Map<String, dynamic>?,
+      );
+      expect(nope, isNull);
+      expect(jobId, isNotNull);
+
+      Map<String, dynamic> job = <String, dynamic>{};
+      for (int i = 0; i < 60; i++) {
+        await Future<void>.delayed(const Duration(seconds: 2));
+        job = await api.job(jobId!);
+        if (job['status'] == 'done' || job['status'] == 'error') break;
+      }
+      expect(job['status'], 'done', reason: job['message']?.toString());
+
+      final String? url = (job['result'] as Map<String, dynamic>?)?['url'] as String?;
+      expect(url, isNotNull);
+      final List<int>? mp4 = await api.download(api.mediaUrl(url!));
+      expect(mp4, isNotNull);
+      expect(mp4!.length, greaterThan(1000));
+    }
   });
 }

@@ -892,6 +892,7 @@ Future<void> openSharesSheet(
 Future<Map<String, dynamic>?> openRenderSheet(
   BuildContext context, {
   required Map<String, dynamic> style,
+  bool burnText = true,
 }) {
   final Map<String, dynamic> draft = <String, dynamic>{...style};
 
@@ -980,9 +981,20 @@ Future<Map<String, dynamic>?> openRenderSheet(
               top: sp.s2, bottom: sp.s2),
             Block(Text(upper('焼き込む'), style: Typo.of(context).panelLabel),
                 top: sp.s3, bottom: sp.s1),
-            Block(flag('時刻', 'time'), top: sp.s1, bottom: sp.s1),
-            Block(flag('メモ', 'note'), top: sp.s1, bottom: sp.s1),
-            Block(flag('ログ名', 'logName'), top: sp.s1, bottom: sp.s1),
+            // ★ サーバの ffmpeg に drawtext が無いと、文字は乗らない。
+            //   選べるように見せて何も起きないより、できない訳を出す。
+            if (!burnText)
+              Block(
+                Text('このサーバの ffmpeg では文字を焼き込めません（drawtext がありません）。',
+                    style: Typo.of(context).mini.copyWith(decoration: TextDecoration.none)),
+                top: sp.s1,
+                bottom: sp.s1,
+              )
+            else ...<Block>[
+              Block(flag('時刻', 'time'), top: sp.s1, bottom: sp.s1),
+              Block(flag('メモ', 'note'), top: sp.s1, bottom: sp.s1),
+              Block(flag('ログ名', 'logName'), top: sp.s1, bottom: sp.s1),
+            ],
             Block(SheetActions(children: <Widget>[
               TextBtn('やめる', onTap: () => Navigator.of(context).pop()),
               PrimaryBtn('この見た目で作る', onTap: () => Navigator.of(context).pop(draft)),

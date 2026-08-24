@@ -1,4 +1,6 @@
 // 画面の骨。web の .app / .topbar / .screen-body / .tabbar をそのまま写す。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../design/icons.dart';
@@ -254,34 +256,66 @@ class Crumbs extends StatelessWidget {
 }
 
 // ── 知らせと確かめ ──────────────────────────────────────
-// ★ 自前で重ねずに、標準の仕組みに載せる。画面の外を押した・戻ったときの
-//   後始末まで面倒を見てくれるので、閉じられない札のような不具合が出ない。
+// ★ 知らせは自分で重ねる。SnackBar は Scaffold の下にいることが前提で、
+//   この作りには Scaffold が無いため、呼ぶたびに落ちていた。
+//   重ねる場所（Overlay）は根のものを使う。札の上に出しても隠れない。
+
+OverlayEntry? _note;
+Timer? _noteTimer;
+
+void _clearNote() {
+  _noteTimer?.cancel();
+  _noteTimer = null;
+  if (_note?.mounted ?? false) _note!.remove();
+  _note = null;
+}
 
 /// CSS: .toast — 反転した細い帯を下から出す。
 void toast(BuildContext context, String message) {
+  final OverlayState? layer = Overlay.maybeOf(context, rootOverlay: true);
+  if (layer == null) return;
+
   final Palette c = colorsOf(context);
   final Space sp = spaceOf(context);
-  ScaffoldMessenger.of(context)
-    ..clearSnackBars()
-    ..showSnackBar(SnackBar(
-      content: Text(
-        upper(message),
-        style: TextStyle(
-          color: c.selInk,
-          fontFamily: monoFamily,
-          fontFamilyFallback: monoFallback,
-          fontSize: 12,
-          height: lineHeight,
-          leadingDistribution: TextLeadingDistribution.even,
-          letterSpacing: 0.96,
+  final double safeBottom = MediaQuery.paddingOf(context).bottom;
+
+  _clearNote();
+  _note = OverlayEntry(
+    builder: (BuildContext _) => Positioned(
+      left: 0,
+      right: 0,
+      bottom: sp.s5 + safeBottom,
+      child: IgnorePointer(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.sizeOf(context).width * 0.9,
+            ),
+            child: Container(
+              color: c.sel,
+              padding: EdgeInsets.symmetric(horizontal: sp.s3, vertical: 12),
+              child: Text(
+                upper(message),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: c.selInk,
+                  fontFamily: monoFamily,
+                  fontFamilyFallback: monoFallback,
+                  fontSize: 12,
+                  height: 1.7,
+                  leadingDistribution: TextLeadingDistribution.even,
+                  letterSpacing: 0.96,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
-      backgroundColor: c.sel,
-      behavior: SnackBarBehavior.floating,
-      shape: const RoundedRectangleBorder(),
-      margin: EdgeInsets.fromLTRB(sp.s4, 0, sp.s4, 64 + MediaQuery.paddingOf(context).bottom),
-      duration: const Duration(seconds: 3),
-    ));
+    ),
+  );
+  layer.insert(_note!);
+  _noteTimer = Timer(const Duration(seconds: 3), _clearNote);
 }
 
 /// 取り返しのつかないことをする前に、一度だけ確かめる。
