@@ -30,7 +30,8 @@ class CaptureScreen extends StatefulWidget {
   final VoidCallback? onClose;
 
   /// 撮れたものを渡す。確かめる画面へ進むのは呼んだ側の仕事。
-  final void Function(XFile file, int durationMs)? onShot;
+  /// 撮れたもの。[facing] は 'user'（前）か 'environment'（後）。
+  final void Function(XFile file, int durationMs, String facing)? onShot;
 
   /// 記録先を選び直す
   final VoidCallback? onPickDest;
@@ -76,6 +77,13 @@ class _CaptureScreenState extends State<CaptureScreen> with SingleTickerProvider
     ]);
     _open();
   }
+
+  /// いま使っているレンズの向き。web の facing と同じ言い方にそろえる。
+  String get _facing => _cameras.isEmpty
+      ? ''
+      : (_cameras[_lens % _cameras.length].lensDirection == CameraLensDirection.front
+          ? 'user'
+          : 'environment');
 
   /// 端末のカメラを開く。
   /// ★ はじめは端末が選び分けてくれる背面のカメラを使う（いちばん写りがよい）。
@@ -148,7 +156,7 @@ class _CaptureScreenState extends State<CaptureScreen> with SingleTickerProvider
       _ring.stop();
       if (!mounted) return;
       setState(() => _busy = false);
-      widget.onShot?.call(file, widget.cutSeconds * 1000);
+      widget.onShot?.call(file, widget.cutSeconds * 1000, _facing);
     } catch (e) {
       _ring.stop();
       if (!mounted) return;

@@ -337,7 +337,8 @@ class _HostState extends State<_Host> {
           destination: dest.name,
           cutSeconds: dest.cutSeconds,
           onClose: () => Navigator.of(page).maybePop(),
-          onShot: (XFile file, int durationMs) => _openReview(dest, file, durationMs),
+          onShot: (XFile file, int durationMs, String facing) =>
+              _openReview(dest, file, durationMs, facing: facing),
           // 記録先はこの撮影のあいだだけ。既定の保存先は変えない。
           onPickDest: () => openMoveSheet(
             page,
@@ -373,7 +374,7 @@ class _HostState extends State<_Host> {
   /// ★ [closeAll] が false のときは、この画面だけ閉じて撮影の画面には戻さない。
   ///   まとめて取り込むときに、1本ごとに最初まで戻ってしまうのを避ける。
   Future<bool> _openReview(LogItem dest, XFile file, int durationMs,
-      {bool fromFile = false, bool closeAll = true}) async {
+      {bool fromFile = false, bool closeAll = true, String facing = ''}) async {
     final bool? saved = await Navigator.of(context).push<bool>(MaterialPageRoute<bool>(
       builder: (BuildContext sheet) => ReviewScreen(
         file: file,
@@ -395,6 +396,7 @@ class _HostState extends State<_Host> {
               'takenAt': now.toUtc().toIso8601String(),
               'tzOffset': -now.timeZoneOffset.inMinutes,
               'source': fromFile ? 'upload' : 'camera',
+              if (facing.isNotEmpty) 'facing': facing,
               if (note.isNotEmpty) 'note': note,
               if (here != null) 'lat': here.lat,
               if (here != null) 'lon': here.lon,
