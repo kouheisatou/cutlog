@@ -277,14 +277,27 @@ class _DayScreenState extends State<DayScreen> {
               color: camBackdrop,
               // ★ 映像が出るまで黒いままにしない。まずサムネを敷く。
               //   読み込みの間も「どのカットを見ているか」が途切れない。
-              child: _player != null && _player!.value.isInitialized
+              child: _playable.isEmpty
                   ? Center(
-                      child: AspectRatio(
-                        aspectRatio: _player!.value.aspectRatio,
-                        child: VideoPlayer(_player!),
+                      child: Padding(
+                        padding: EdgeInsets.all(spaceOf(context).s4),
+                        child: Text(
+                          widget.cuts.isEmpty
+                              ? 'この日のカットはありません。'
+                              : 'この日に表示できるクリップがありません',
+                          textAlign: TextAlign.center,
+                          style: Typo(c).empty.copyWith(color: const Color(0xFF8A8A90)),
+                        ),
                       ),
                     )
-                  : _poster(),
+                  : (_player != null && _player!.value.isInitialized
+                      ? Center(
+                          child: AspectRatio(
+                            aspectRatio: _player!.value.aspectRatio,
+                            child: VideoPlayer(_player!),
+                          ),
+                        )
+                      : _poster()),
             ),
           ),
         ),

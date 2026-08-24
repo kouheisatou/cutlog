@@ -197,6 +197,7 @@ class SheetField extends StatelessWidget {
     this.fontSize = 14,
     this.controller,
     this.obscure = false,
+    this.onSubmit,
   });
 
   final String hint;
@@ -211,6 +212,9 @@ class SheetField extends StatelessWidget {
 
   final TextEditingController? controller;
   final bool obscure;
+
+  /// Enter を押したときに動かすもの。手が離せないときに助かる。
+  final VoidCallback? onSubmit;
 
   @override
   Widget build(BuildContext context) {
@@ -228,6 +232,8 @@ class SheetField extends StatelessWidget {
         obscureText: obscure,
         style: style,
         cursorColor: c.ink,
+        textInputAction: onSubmit == null ? null : TextInputAction.done,
+        onSubmitted: onSubmit == null ? null : (String _) => onSubmit!(),
         decoration: InputDecoration(
           isDense: true,
           border: InputBorder.none,

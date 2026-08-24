@@ -31,12 +31,22 @@ Future<void> openLogAddSheet(
             Block(const SheetTitle('ログを追加'), bottom: sp.s1),
             Block(const SheetHead('新しく作る'), top: sp.s5, bottom: sp.s2),
             Block(SheetRow(children: <Widget>[
-              SheetField(hint: 'ログのタイトル', width: 149, controller: name),
+              SheetField(
+                hint: 'ログのタイトル',
+                width: 149,
+                controller: name,
+                onSubmit: () => say(context, () => onCreate(name.text.trim())),
+              ),
               PrimaryBtn('作成', onTap: () => say(context, () => onCreate(name.text.trim()))),
             ]), top: sp.s2, bottom: sp.s2),
             Block(const SheetHead('招待コードで参加する'), top: sp.s5, bottom: sp.s2),
             Block(SheetRow(children: <Widget>[
-              SheetField(hint: '招待コード', width: 149, controller: code),
+              SheetField(
+                hint: '招待コード',
+                width: 149,
+                controller: code,
+                onSubmit: () => say(context, () => onJoin(code.text.trim())),
+              ),
               TextBtn('参加', onTap: () => say(context, () => onJoin(code.text.trim()))),
             ]), top: sp.s2, bottom: sp.s2),
           ], outer: false);
@@ -440,15 +450,23 @@ class _CutBodyState extends State<_CutBody> {
           Block(Text('まだコメントはありません。', style: t.small), top: 0, bottom: sp.s2),
         for (final Comment cm in _detail?.comments ?? <Comment>[])
           Block(
+            // CSS: .comment — 顔と一緒に出す
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
+                Avatar(
+                  initial: cm.author.isEmpty ? '?' : cm.author.characters.first,
+                  url: cm.avatarUrl == null ? null : media.url(cm.avatarUrl!),
+                  headers: media.headers,
+                ),
+                SizedBox(width: sp.s2),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      Text(upper(cm.author), style: t.eyebrow.copyWith(fontSize: 11)),
+                      Text(cm.author,
+                          style: t.body.copyWith(fontSize: 12, color: c.inkSoft)),
                       Text(cm.body, style: t.body.copyWith(fontSize: 14)),
                     ],
                   ),
@@ -460,7 +478,17 @@ class _CutBodyState extends State<_CutBody> {
             bottom: sp.s1,
           ),
         Block(SheetRow(children: <Widget>[
-          SheetField(hint: 'コメントを書く', width: 149, controller: _comment),
+          SheetField(
+            hint: 'コメントを書く',
+            width: 149,
+            controller: _comment,
+            onSubmit: () {
+              final String text = _comment.text.trim();
+              if (text.isEmpty) return;
+              _comment.clear();
+              _run(() => widget.onComment(text));
+            },
+          ),
           PrimaryBtn('送信', onTap: () {
             final String text = _comment.text.trim();
             if (text.isEmpty) return;

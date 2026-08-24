@@ -142,6 +142,13 @@ class _HostState extends State<_Host> {
         _config = got[2]! as Map<String, dynamic>;
         _cuts = got[3]! as List<Cut>;
       });
+      // ★ 1つも無いと、撮ろうにも置き場所が無い。最初の1つだけ用意しておく。
+      if (_logs!.isEmpty) {
+        await _api.createLog('マイログ');
+        final List<LogItem> again = await _api.logs();
+        if (mounted) setState(() => _logs = again);
+      }
+
       // 通知の受け取り口。サーバが出せる設えのときだけ用意する。
       // ★ ここで失敗しても、他の機能は止めない。
       if (_config['fcmEnabled'] == true && !kIsWeb) unawaited(_push.start());
@@ -470,6 +477,71 @@ class _HostState extends State<_Host> {
     );
   }
 
+  /// その日のぶんで共有リンクを作る
+  Future<void> _shareDay(BuildContext context, List<Cut> day) async {
+    if (day.isEmpty) {
+      toast(context, 'この日にはカットがありません');
+      return;
+    }
+    final (String? bad, String? url) = await _api.createShare(
+      logId: (_log ?? _target).id,
+      cutIds: day.map((Cut c) => c.id).toList(),
+      title: _day ?? '共有',
+    );
+    if (!context.mounted) return;
+    if (bad != null) {
+      toast(context, bad);
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: url ?? ''));
+    if (context.mounted) toast(context, '共有リンクを作り、コピーしました');
+  }
+
+  /// その日のぶんでまとめ動画を作る。
+  /// ★ 作るのに時間がかかるので、できたかどうかを 2 秒おきに見に行く。
+  Future<void> _renderDay(BuildContext context, List<Cut> day) async {
+    if (day.isEmpty) {
+      toast(context, 'この日にはカットがありません');
+      return;
+    }
+    final (String? bad, String? jobId) = await _api.startRender(
+      logId: (_log ?? _target).id,
+      cutIds: day.map((Cut c) => c.id).toList(),
+      label: _day ?? 'まとめ',
+    );
+    if (!context.mounted) return;
+    if (bad != null || jobId == null) {
+      toast(context, bad ?? '作れませんでした');
+      return;
+    }
+    toast(context, '動画を作っています…');
+
+    // 5 分見て終わらなければ諦める（延々と見に行かない）
+    for (int i = 0; i < 150; i++) {
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (!context.mounted) return;
+      try {
+        final Map<String, dynamic> job = await _api.job(jobId);
+        if (job['status'] == 'done') {
+          final String? url = (job['result'] as Map<String, dynamic>?)?['url'] as String?;
+          if (!context.mounted) return;
+          toast(context, '動画ができました');
+          if (url != null) {
+            await launchUrl(Uri.parse(_api.mediaUrl(url)), mode: LaunchMode.externalApplication);
+          }
+          return;
+        }
+        if (job['status'] == 'error') {
+          if (context.mounted) toast(context, '作れませんでした: ${job['message'] ?? ''}');
+          return;
+        }
+      } catch (_) {
+        // 一度取れなくても、次の回に賭ける
+      }
+    }
+    if (context.mounted) toast(context, '時間がかかっています。あとで確認してください');
+  }
+
   /// その日の中身を取り直す
   Future<void> _reloadDay() async {
     if (_log == null || _day == null) {
@@ -577,8 +649,17 @@ class _HostState extends State<_Host> {
     if (_needAuth && _shot == null) return AuthScreen(onSubmit: _signIn);
     if (_logs == null) return const _Waiting();
 
-    return _pageFor(_shot ?? _current);
+    final String where = _shot ?? _current;
+    return ScreenSwap(depth: _depthOf(where), child: _pageFor(where));
   }
+
+  /// 画面の深さ。web と同じく ログ一覧:0 → ログ:1 → その日/設定:2。
+  int _depthOf(String where) => switch (where) {
+        'log' => 1,
+        'logset' || 'day' => 2,
+        'maplist' => 1,
+        _ => 0,
+      };
 
   /// タブと深さから、いまの画面の名前を出す
   String get _current {
@@ -609,6 +690,31 @@ class _HostState extends State<_Host> {
               me: _me ?? Me(id: '', username: '', displayName: ''),
               pushHint: _pushHint,
               reminder: _reminder,
+              avatarUrl: _me?.avatarUrl == null ? null : _api.mediaUrl(_me!.avatarUrl!),
+              avatarHeaders: _api.mediaHeaders,
+              onEnablePush: () async {
+                if (_config['fcmEnabled'] != true) {
+                  return 'このサーバは通知の設定がまだ済んでいません。管理者にお問い合わせください';
+                }
+                return _push.start();
+              },
+              onPickAvatar: () async {
+                final XFile? got =
+                    await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 512);
+                if (got == null) return '選ばれませんでした';
+                final String? bad = await _api.setAvatar(
+                  await got.readAsBytes(),
+                  got.name.isEmpty ? 'avatar.jpg' : got.name,
+                  got.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg',
+                );
+                if (bad == null) await _loadMe();
+                return bad;
+              },
+              onClearAvatar: () async {
+                final String? bad = await _api.clearAvatar();
+                if (bad == null) await _loadMe();
+                return bad;
+              },
               onSaveReminder: (Reminder r) async {
                 final String? bad = await _api.saveReminder(r);
                 if (bad == null && mounted) setState(() => _reminder = r);
@@ -771,6 +877,8 @@ class _HostState extends State<_Host> {
               },
               onDetail: (Cut cut) => _sheetCut(context, cut),
               onComments: (Cut cut) => _sheetCut(context, cut),
+              onShare: () => _shareDay(context, day),
+              onRender: () => _renderDay(context, day),
             ),
           ),
         );

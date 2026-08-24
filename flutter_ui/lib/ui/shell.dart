@@ -319,3 +319,38 @@ Future<bool> confirm(BuildContext context, String question, String yes) async {
   );
   return ok ?? false;
 }
+
+
+/// 画面が入れ替わるときの、ほんの少しの動き。
+/// ★ 奥へ進むときは下から、戻るときは上から出す。横へずらさない。
+///   横だと、その間だけ画面より広くなって横に揺れる（web でそう決めている）。
+class ScreenSwap extends StatelessWidget {
+  const ScreenSwap({super.key, required this.depth, required this.child});
+
+  /// いまの深さ。増えたら奥へ、減ったら戻り。
+  final int depth;
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      switchInCurve: Curves.easeOutCubic,
+      transitionBuilder: (Widget w, Animation<double> t) {
+        final bool forward = (w.key as ValueKey<int>?)?.value != null;
+        return FadeTransition(
+          opacity: t,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: Offset(0, forward ? 0.02 : -0.02),
+              end: Offset.zero,
+            ).animate(t),
+            child: w,
+          ),
+        );
+      },
+      child: KeyedSubtree(key: ValueKey<int>(depth), child: child),
+    );
+  }
+}

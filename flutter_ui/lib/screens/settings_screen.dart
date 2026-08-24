@@ -20,6 +20,11 @@ class SettingsScreen extends StatefulWidget {
     this.onLogout,
     this.onSaveReminder,
     this.onTestPush,
+    this.onEnablePush,
+    this.onPickAvatar,
+    this.onClearAvatar,
+    this.avatarUrl,
+    this.avatarHeaders = const <String, String>{},
   });
 
   final Me me;
@@ -36,6 +41,16 @@ class SettingsScreen extends StatefulWidget {
 
   /// 試しに1通送る
   final Future<String?> Function()? onTestPush;
+
+  /// 通知を受け取れるようにする
+  final Future<String?> Function()? onEnablePush;
+
+  /// アイコン画像を選ぶ／消す
+  final Future<String?> Function()? onPickAvatar;
+  final Future<String?> Function()? onClearAvatar;
+
+  final String? avatarUrl;
+  final Map<String, String> avatarHeaders;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -148,7 +163,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Block(_row(<Widget>[
             TextBtn('保存', onTap: () => _run(() => widget.onSaveReminder!(_edited), '保存しました')),
             SizedBox(width: sp.s3),
-            const TextBtn('許可'),
+            TextBtn('許可', onTap: () => _run(widget.onEnablePush!, '通知を許可しました')),
             SizedBox(width: sp.s3),
             TextBtn('テスト送信', onTap: () => _run(widget.onTestPush!, '送りました')),
           ]), top: sp.s2, bottom: sp.s2),
@@ -161,11 +176,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           // CSS: .avatar-row は gap が var(--s2)（他の .panel-row は var(--s3)）
           Block(_row(<Widget>[
-            Avatar(initial: initial, large: true),
+            Avatar(
+              initial: initial,
+              large: true,
+              url: widget.avatarUrl,
+              headers: widget.avatarHeaders,
+            ),
             SizedBox(width: sp.s2),
-            const TextBtn('アイコン画像を設定'),
+            TextBtn('アイコン画像を設定',
+                onTap: () => _run(widget.onPickAvatar!, 'アイコン画像を設定しました')),
             SizedBox(width: sp.s2),
-            const TextBtn('削除'),
+            // 画像が無いときは、消すものが無いので出さない
+            if ((widget.avatarUrl ?? '').isNotEmpty)
+              TextBtn('削除', onTap: () => _run(widget.onClearAvatar!, 'アイコン画像を削除しました')),
           ]), top: sp.s2, bottom: sp.s2),
 
           Block(_row(<Widget>[

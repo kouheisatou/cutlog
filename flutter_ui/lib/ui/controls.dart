@@ -195,11 +195,20 @@ class LabeledField extends StatelessWidget {
 
 /// CSS: .avatar — 丸く切った顔。絵が無いときは名前の1文字を置く。
 class Avatar extends StatelessWidget {
-  const Avatar({super.key, required this.initial, this.url, this.large = false});
+  const Avatar({
+    super.key,
+    required this.initial,
+    this.url,
+    this.large = false,
+    this.headers = const <String, String>{},
+  });
 
   final String initial;
   final String? url;
   final bool large;
+
+  /// 取りに行くときに添えるヘッダ（cookie）
+  final Map<String, String> headers;
 
   @override
   Widget build(BuildContext context) {
@@ -212,8 +221,13 @@ class Avatar extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(color: c.paper2, shape: BoxShape.circle),
       clipBehavior: Clip.antiAlias,
-      child: url != null
-          ? CachedNetworkImage(imageUrl: url!, width: size, height: size, fit: BoxFit.cover)
+      child: (url ?? '').isNotEmpty
+          ? CachedNetworkImage(
+              imageUrl: url!,
+              httpHeaders: headers,
+              width: size,
+              height: size,
+              fit: BoxFit.cover)
           : Text(
               initial,
               style: TextStyle(
