@@ -852,7 +852,10 @@ Future<void> openSharesSheet(
   required List<ShareLink> shares,
   required Future<String?> Function(String id) onRevoke,
   required void Function(String url) onCopy,
+  Future<List<ShareLink>> Function()? reload,
 }) {
+  List<ShareLink> live = shares;
+
   return openSheet<void>(
     context,
     children: <Widget>[
@@ -863,10 +866,10 @@ Future<void> openSharesSheet(
           final Space sp = spaceOf(context);
           return CssColumn(<Block>[
             Block(const SheetTitle('共有リンク'), bottom: sp.s1),
-            if (shares.isEmpty)
+            if (live.isEmpty)
               Block(Text('まだ共有リンクはありません。', style: t.small), top: sp.s2)
             else
-              for (final ShareLink l in shares)
+              for (final ShareLink l in live)
                 Block(
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
@@ -886,12 +889,19 @@ Future<void> openSharesSheet(
                       ),
                       MiniBtn('コピー', icon: 'copy', onTap: () => onCopy(l.url)),
                       SizedBox(width: sp.s2),
-                      MiniBtn('停止', onTap: () async {
-                        final bool yes = await confirm(context,
-                            'この共有リンクを停止しますか。リンクを知っている人も開けなくなります。', '停止');
-                        if (!yes || !context.mounted) return;
-                        say(context, () => onRevoke(l.id), close: false);
-                      }),
+                      // 止まっているものは、もう止められない
+                      if (!l.revoked)
+                        MiniBtn('停止', onTap: () async {
+                          final bool yes = await confirm(context,
+                              'この共有リンクを停止しますか。リンクを知っている人も開けなくなります。', '停止');
+                          if (!yes || !context.mounted) return;
+                          say(context, () async {
+                            final String? bad = await onRevoke(l.id);
+                            if (bad != null) return bad;
+                            if (reload != null) live = await reload();
+                            return null;
+                          }, close: false);
+                        }),
                     ],
                   ),
                   top: sp.s1,

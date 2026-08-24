@@ -9,6 +9,7 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import 'data/api.dart';
 import 'data/save.dart';
+import 'package:share_plus/share_plus.dart' show SharePlus, ShareParams;
 import 'package:image_picker/image_picker.dart' show ImagePicker, ImageSource;
 
 import 'data/media.dart';
@@ -218,10 +219,19 @@ class _HostState extends State<_Host> {
 
   String get _newestDay => _cuts.isEmpty ? '' : _cuts.first.localDate;
 
-  /// web の設定画面と同じ文言。通知のキーが無いサーバでは、その旨だけを出す。
-  String get _pushHint => _config['vapidPublicKey'] == null
-      ? 'このサーバは通知のキー（VAPID）が未設定です。管理者が .env に設定すると使えます。'
-      : '';
+  /// 通知が使えないサーバでは、その訳だけを出す。
+  /// ★ web と端末では要る鍵が違う。web はブラウザの仕組み（VAPID）、
+  ///   端末は Firebase（FCM）。片方だけを見ると、使えるのに「未設定」と出る。
+  String get _pushHint {
+    if (kIsWeb) {
+      return _config['vapidPublicKey'] == null
+          ? 'このサーバは通知のキー（VAPID）が未設定です。管理者が .env に設定すると使えます。'
+          : '';
+    }
+    return _config['fcmEnabled'] == true
+        ? ''
+        : 'このサーバは通知のキー（Firebase）が未設定です。管理者が .env に設定すると使えます。';
+  }
 
   // ── 行き来 ──────────────────────────────────────────
   Future<void> _openLog(LogItem log, {bool quiet = false}) async {
@@ -438,7 +448,7 @@ class _HostState extends State<_Host> {
                     Row(children: <Widget>[
                       Expanded(
                         child: Text(
-                          '\${c.localDate} \${c.hhmm}　\${c.note ?? ''}',
+                          '${c.localDate} ${c.hhmm}\u3000${c.note ?? ''}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Typo.of(context).body.copyWith(fontSize: 14),
@@ -502,18 +512,19 @@ class _HostState extends State<_Host> {
     await openSharesSheet(
       context,
       shares: got,
+      // ★ 止めても札は閉じない。止めたことが並びの上で分かるようにして、
+      //   続けて別のものも止められるようにする。
       onRevoke: (String id) async {
         final String? bad = await _api.revokeShare(id);
-        if (bad == null && context.mounted) {
-          Navigator.of(context).pop();
-          toast(context, '共有リンクを停止しました');
-        }
-        return bad;
+        if (bad != null) return bad;
+        if (context.mounted) toast(context, '共有リンクを停止しました');
+        return null;
       },
       onCopy: (String url) async {
         await Clipboard.setData(ClipboardData(text: url));
         if (context.mounted) toast(context, 'コピーしました');
       },
+      reload: () => _api.shares((_log ?? _target).id),
     );
   }
 
@@ -533,8 +544,13 @@ class _HostState extends State<_Host> {
       toast(context, bad);
       return;
     }
+    // ★ 端末では、写して終わりにせず、渡し先を選ばせる。
+    //   人に見せるために作るものなので、そこまで運んで初めて役に立つ。
     await Clipboard.setData(ClipboardData(text: url ?? ''));
     if (context.mounted) toast(context, '共有リンクを作り、コピーしました');
+    if (!kIsWeb && (url ?? '').isNotEmpty) {
+      await SharePlus.instance.share(ShareParams(text: url));
+    }
   }
 
   /// その日のぶんでまとめ動画を作る。
